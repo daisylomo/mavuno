@@ -21,12 +21,14 @@ class ApiError(Exception):
         status_code: int,
         code: str,
         message: str,
+        details: Any | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
+        self.details = details
         self.headers = headers
 
 
@@ -77,6 +79,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=exc.status_code,
             code=exc.code,
             message=exc.message,
+            details=exc.details,
             headers=exc.headers,
         )
 

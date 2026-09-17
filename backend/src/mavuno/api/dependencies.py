@@ -84,6 +84,7 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
+DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 def require_roles(

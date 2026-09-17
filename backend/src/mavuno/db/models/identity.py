@@ -14,7 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.mysql import BINARY, DATETIME, INTEGER, TEXT, VARBINARY
+from sqlalchemy.dialects.mysql import BINARY, DATETIME, INTEGER, JSON, TEXT, VARBINARY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mavuno.db.base import Base, TimestampMixin, UUIDBinary
@@ -152,12 +152,32 @@ class DeviceInstallation(TimestampMixin, Base):
     )
     installation_id: Mapped[UUID] = mapped_column(UUIDBinary(), nullable=False)
     platform: Mapped[str] = mapped_column(String(16), nullable=False)
-    push_token_ciphertext: Mapped[bytes | None] = mapped_column(VARBINARY(1024), nullable=True)
+    push_token_ciphertext: Mapped[bytes | None] = mapped_column(VARBINARY(8192), nullable=True)
     push_token_hash: Mapped[bytes | None] = mapped_column(BINARY(32), nullable=True)
     last_seen_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6), nullable=True)
+
+
+class ProfileAuditEvent(Base):
+    __tablename__ = "profile_audit_events"
+    __table_args__ = (Index("ix_profile_audit_events_user_created", "user_id", "created_at"),)
+
+    id: Mapped[UUID] = mapped_column(UUIDBinary(), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        UUIDBinary(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_user_id: Mapped[UUID] = mapped_column(
+        UUIDBinary(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[UUID | None] = mapped_column(UUIDBinary(), nullable=True)
+    changed_fields: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
 
 
 class RefreshToken(Base):

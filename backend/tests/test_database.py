@@ -81,6 +81,7 @@ def test_identity_metadata_contains_baseline_tables() -> None:
         "device_installations",
         "farmer_profiles",
         "profiles",
+        "profile_audit_events",
         "refresh_tokens",
         "roles",
         "user_roles",
