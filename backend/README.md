@@ -136,6 +136,27 @@ Commerce endpoints live under `/api/v1`: cart item management, checkout, order r
 initiation/retrieval, and the tokenized Daraja callback endpoint. Every retryable client operation
 requires an `Idempotency-Key` header.
 
+## Messaging and notifications
+
+Feature 08 adds HTTP-polled conversations scoped to an order or listing. A conversation contains
+exactly one buyer and one farmer; order membership is derived from immutable order items and
+listing ownership is derived from the listing. All reads and mutations include the authenticated
+member in their query so foreign UUIDs are returned as not found. Client-generated message UUIDs
+make sends idempotent, and per-member read markers never move backwards.
+
+Each message transaction also inserts notification history and a deduplicated `notification_push`
+outbox job. The existing worker claims jobs with `SKIP LOCKED`, a bounded lease, capped exponential
+backoff, and dead-letter state. Delivery is idempotent per notification/device pair. Push tokens
+remain encrypted at rest and are decrypted only at the provider boundary; they are never returned
+by the API or written to logs. Configure the HTTPS push gateway with
+`MAVUNO_NOTIFICATION_PUSH_URL` and `MAVUNO_NOTIFICATION_PUSH_API_KEY`. If it is absent, delivery
+fails closed and follows the normal retry/dead-letter policy while notification history remains
+available through polling.
+
+Messaging endpoints under `/api/v1` cover conversation creation/listing, message send/polling,
+read markers, notification history/read state, and push preferences. WebSockets are intentionally
+not required for this release.
+
 ## Verification
 
 ```bash
