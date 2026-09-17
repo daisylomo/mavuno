@@ -5,4 +5,5 @@ from uuid import UUID
 class ProfileActor(Protocol):
     """Smallest authentication contract required by profile ownership rules."""
 
-    id: UUID
+    @property
+    def id(self) -> UUID: ...

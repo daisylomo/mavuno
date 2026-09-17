@@ -101,6 +101,14 @@ existing ciphertext unreadable, so retain the old key during a controlled re-enc
 or revoke installations and require clients to register their tokens again. Rotating the HMAC key
 requires recomputing digests from decrypted tokens in the same controlled migration.
 
+## Catalog and inventory
+
+Feature 05 adds produce categories, products, farmer-owned listings, object-storage image keys,
+and an append-only inventory movement history. Catalog reads support filters, search, stable cursor
+pagination, sorting, ETags, and bounded cache headers. Listing and inventory mutations verify the
+farmer owner, lock inventory rows, and increment a version so concurrent changes cannot silently
+overwrite one another.
+
 ## Verification
 
 ```bash
