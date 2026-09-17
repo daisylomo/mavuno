@@ -18,6 +18,7 @@ from mavuno.db.models.commerce import (
     PaymentEvent,
     PaymentReconciliation,
 )
+from mavuno.db.models.fulfilment import Fulfilment, FulfilmentStatusHistory
 from mavuno.db.models.identity import (
     Address,
     BuyerProfile,
@@ -38,6 +39,8 @@ __all__ = [
     "CartItem",
     "DeviceInstallation",
     "FarmerProfile",
+    "Fulfilment",
+    "FulfilmentStatusHistory",
     "InventoryMovement",
     "Listing",
     "ListingImage",
