@@ -49,6 +49,30 @@ uv run alembic -c conf/alembic.ini stamp 0001_identity_baseline
 Application startup never calls `metadata.create_all()`. All later schema changes require a new
 numbered migration.
 
+## Profiles and devices
+
+Authenticated users manage their own profile and Kenyan delivery addresses below
+`/api/v1/users/me`.
+Avatar values are object-storage keys, never uploaded files or public URLs. Farmer and buyer
+extensions require the corresponding assigned role. Address lookups always include the current
+user ID, so another user's UUID is indistinguishable from a missing address.
+
+Device registration accepts a platform push token only when both `MAVUNO_PUSH_TOKEN_HASH_KEY` and
+`MAVUNO_PUSH_TOKEN_ENCRYPTION_KEY` are configured. The server stores Fernet authenticated
+ciphertext for later notification delivery and a separate keyed SHA-256 digest for uniqueness.
+Plaintext tokens never appear in logs, audit events, or API responses. Generate the encryption key
+with:
+
+```bash
+uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Use an unrelated random HMAC secret of at least 32 characters; do not reuse JWT, database, or
+encryption credentials. Both values are mandatory in production. Rotating the Fernet key makes
+existing ciphertext unreadable, so retain the old key during a controlled re-encryption migration
+or revoke installations and require clients to register their tokens again. Rotating the HMAC key
+requires recomputing digests from decrypted tokens in the same controlled migration.
+
 ## Verification
 
 ```bash
