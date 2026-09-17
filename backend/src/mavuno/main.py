@@ -10,6 +10,7 @@ from mavuno import __version__
 from mavuno.api.errors import register_exception_handlers
 from mavuno.api.middleware import RequestIdMiddleware
 from mavuno.api.router import router
+from mavuno.auth.rate_limit import AuthRateLimiter
 from mavuno.core.config import Settings, get_settings
 from mavuno.core.logging import configure_logging
 from mavuno.db import Database
@@ -39,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.ready = False
     app.state.settings = settings
+    app.state.auth_rate_limiter = AuthRateLimiter(settings)
 
     app.add_middleware(RequestIdMiddleware)
     if settings.cors_origins:
