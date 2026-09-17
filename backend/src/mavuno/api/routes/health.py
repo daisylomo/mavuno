@@ -27,4 +27,10 @@ async def readiness(request: Request) -> HealthResponse | JSONResponse:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=HealthResponse(status="not_ready").model_dump(),
         )
+    database = getattr(request.app.state, "database", None)
+    if database is not None and not await database.is_ready():
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=HealthResponse(status="not_ready").model_dump(),
+        )
     return HealthResponse(status="ready")

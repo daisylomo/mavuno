@@ -26,6 +26,29 @@ The API listens at `http://127.0.0.1:8000`. Its initial operational endpoints ar
 Copy `.env.example` to `.env` for local overrides. Variables use the `MAVUNO_` prefix. Never
 commit `.env` or production secrets.
 
+## Database
+
+MySQL 8.4 LTS is an external dependency; it is not embedded in this image and there is no Docker
+Compose file. Set `MAVUNO_DATABASE_URL` to an async `mysql+aiomysql://` URL. When configured,
+`/health/ready` performs a lightweight database check and returns `503` while MySQL is unavailable.
+
+Apply migrations before starting a new application revision:
+
+```bash
+uv run alembic -c conf/alembic.ini upgrade head
+```
+
+[`db/schema.sql`](db/schema.sql) is the authoritative empty-database baseline. The first Alembic
+revision executes that same file, avoiding duplicate DDL. If the SQL file is applied manually,
+stamp the database immediately afterwards:
+
+```bash
+uv run alembic -c conf/alembic.ini stamp 0001_identity_baseline
+```
+
+Application startup never calls `metadata.create_all()`. All later schema changes require a new
+numbered migration.
+
 ## Verification
 
 ```bash

@@ -12,6 +12,7 @@ from mavuno.api.middleware import RequestIdMiddleware
 from mavuno.api.router import router
 from mavuno.core.config import Settings, get_settings
 from mavuno.core.logging import configure_logging
+from mavuno.db import Database
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -20,9 +21,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        database = Database(settings) if settings.database_url is not None else None
+        app.state.database = database
         app.state.ready = True
-        yield
-        app.state.ready = False
+        try:
+            yield
+        finally:
+            app.state.ready = False
+            if database is not None:
+                await database.dispose()
 
     app = FastAPI(
         title=settings.app_name,

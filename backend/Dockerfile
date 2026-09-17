@@ -33,6 +33,8 @@ RUN addgroup --system --gid 10001 mavuno \
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=mavuno:mavuno src ./src
 COPY --chown=mavuno:mavuno conf ./conf
+COPY --chown=mavuno:mavuno db ./db
+COPY --chown=mavuno:mavuno migrations ./migrations
 
 USER mavuno
 
