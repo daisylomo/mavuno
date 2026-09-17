@@ -41,3 +41,17 @@ yarn-error.*
 # generated native folders
 **/ios
 **/android
+
+# Local implementation plan
+/backend/PLAN.md
+
+# Python tooling
+**/.venv/
+**/.uv-cache/
+**/.uv-python/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/

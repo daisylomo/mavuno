@@ -1,0 +1,30 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  json:
+    (): mavuno.core.logging.JsonFormatter
+
+handlers:
+  stdout:
+    class: logging.StreamHandler
+    formatter: json
+    stream: ext://sys.stdout
+
+root:
+  level: INFO
+  handlers: [stdout]
+
+loggers:
+  uvicorn:
+    level: INFO
+    handlers: [stdout]
+    propagate: false
+  uvicorn.access:
+    level: WARNING
+    handlers: []
+    propagate: false
+  uvicorn.error:
+    level: INFO
+    handlers: [stdout]
+    propagate: false
