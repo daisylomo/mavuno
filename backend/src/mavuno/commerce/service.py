@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -19,6 +20,7 @@ from mavuno.commerce.schemas import (
     PaymentInitiateRequest,
 )
 from mavuno.core.config import Settings
+from mavuno.core.performance import CatalogCache
 from mavuno.db.models import (
     Cart,
     CartItem,
@@ -133,9 +135,15 @@ class CartService:
 
 
 class CheckoutService:
-    def __init__(self, repository: CommerceRepository, settings: Settings) -> None:
+    def __init__(
+        self,
+        repository: CommerceRepository,
+        settings: Settings,
+        catalog_cache: CatalogCache | None = None,
+    ) -> None:
         self.repository = repository
         self.settings = settings
+        self.catalog_cache = catalog_cache
 
     async def checkout(
         self, user: AuthenticatedUser, idempotency_key: str, delivery_address_id: UUID | None
@@ -266,6 +274,7 @@ class CheckoutService:
                 status_code=409, code="checkout_conflict", message="Checkout could not be completed"
             ) from exc
         await self.repository.refresh(order)
+        await self._invalidate_listings(locked)
         return await self.response(order)
 
     async def get(self, user: AuthenticatedUser, order_id: UUID) -> OrderResponse:
@@ -344,6 +353,13 @@ class CheckoutService:
             )
         )
         await self.repository.commit()
+        await self._invalidate_listings({item.listing_id for item in items})
+
+    async def _invalidate_listings(self, listing_ids: Iterable[UUID]) -> None:
+        if self.catalog_cache is None:
+            return
+        for listing_id in listing_ids:
+            await self.catalog_cache.invalidate_listing(str(listing_id))
 
 
 class PaymentService:

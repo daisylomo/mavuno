@@ -11,6 +11,7 @@ from mavuno.commerce.repository import CommerceRepository
 from mavuno.commerce.service import CheckoutService, PaymentService, _now
 from mavuno.core.config import Settings, get_settings
 from mavuno.core.logging import configure_logging
+from mavuno.core.performance import CatalogCache, PerformanceMetrics, RedisBackend
 from mavuno.db import Database
 from mavuno.payments.provider import PaymentProviderError
 
@@ -23,6 +24,10 @@ async def run_worker() -> None:
         raise RuntimeError("MAVUNO_DATABASE_URL is required for the worker")
     configure_logging(settings.log_config_path, settings.log_level)
     database = Database(settings)
+    metrics = PerformanceMetrics()
+    redis = RedisBackend(settings, metrics)
+    catalog_cache = CatalogCache(redis, settings)
+    database.catalog_cache = catalog_cache
     stopping = asyncio.Event()
     loop = asyncio.get_running_loop()
     for name in (signal.SIGINT, signal.SIGTERM):
@@ -35,9 +40,12 @@ async def run_worker() -> None:
                 await asyncio.wait_for(stopping.wait(), timeout=settings.worker_poll_seconds)
     finally:
         await database.dispose()
+        await redis.close()
 
 
 async def process_batch(database: Database, settings: Settings) -> int:
+    possible_cache = getattr(database, "catalog_cache", None)
+    catalog_cache = possible_cache if isinstance(possible_cache, CatalogCache) else None
     now = _now()
     async with database.session() as session:
         repository = CommerceRepository(session)
@@ -54,7 +62,7 @@ async def process_batch(database: Database, settings: Settings) -> int:
                         UUID(str(job.payload["payment_id"]))
                     )
                 elif job.job_type == "order_expire":
-                    await CheckoutService(repository, settings).expire(
+                    await CheckoutService(repository, settings, catalog_cache).expire(
                         UUID(str(job.payload["order_id"]))
                     )
                 current.status = "completed"

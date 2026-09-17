@@ -24,6 +24,7 @@ from mavuno.catalog.schemas import (
     ProductResponse,
 )
 from mavuno.catalog.service import CatalogService
+from mavuno.core.performance import CatalogCache
 
 router = APIRouter(tags=["catalog"])
 AdminUser = Annotated[AuthenticatedUser, Depends(require_roles("administrator"))]
@@ -84,7 +85,7 @@ async def list_listings(
         cursor_raw=cursor,
         limit=limit,
     )
-    response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=60"
+    response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
     digest = hashlib.sha256(
         "|".join(f"{item.id}:{item.version}" for item in page.items).encode()
     ).hexdigest()[:24]
@@ -103,11 +104,19 @@ async def create_listing(
 async def get_listing(
     listing_id: UUID, request: Request, response: Response, session: DatabaseSession
 ) -> ListingResponse | Response:
-    listing = await _service(session).get_listing(listing_id)
+    cache: CatalogCache = request.app.state.catalog_cache
+    cached, generation = await cache.get_listing(str(listing_id))
+    if cached is None:
+        listing = await _service(session).get_listing(listing_id)
+        await cache.set_listing(str(listing_id), listing.model_dump(mode="json"), generation)
+        response.headers["X-Cache"] = "MISS"
+    else:
+        listing = ListingResponse.model_validate(cached)
+        response.headers["X-Cache"] = "HIT"
     etag = f'"listing-{listing.id}-{listing.version}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
-    response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=60"
+    response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
     response.headers["ETag"] = etag
     return listing
 
@@ -118,8 +127,11 @@ async def update_listing(
     payload: ListingUpdate,
     current_user: CurrentUser,
     session: DatabaseSession,
+    request: Request,
 ) -> ListingResponse:
-    return await _service(session).update_listing(current_user, listing_id, payload)
+    listing = await _service(session).update_listing(current_user, listing_id, payload)
+    await request.app.state.catalog_cache.invalidate_listing(str(listing_id))
+    return listing
 
 
 @router.delete("/listings/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -127,9 +139,11 @@ async def archive_listing(
     listing_id: UUID,
     current_user: CurrentUser,
     session: DatabaseSession,
+    request: Request,
     expected_version: int = Query(ge=1),
 ) -> Response:
     await _service(session).archive_listing(current_user, listing_id, expected_version)
+    await request.app.state.catalog_cache.invalidate_listing(str(listing_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -139,10 +153,13 @@ async def change_inventory(
     payload: InventoryChange,
     current_user: CurrentUser,
     session: DatabaseSession,
+    request: Request,
 ) -> ListingResponse:
-    return await _service(session).change_inventory(
+    listing = await _service(session).change_inventory(
         current_user, listing_id, payload.quantity_delta, payload.movement_type, payload.reason
     )
+    await request.app.state.catalog_cache.invalidate_listing(str(listing_id))
+    return listing
 
 
 @router.post(
@@ -155,8 +172,11 @@ async def add_image(
     payload: ImageCreate,
     current_user: CurrentUser,
     session: DatabaseSession,
+    request: Request,
 ) -> object:
-    return await _service(session).add_image(current_user, listing_id, payload)
+    image = await _service(session).add_image(current_user, listing_id, payload)
+    await request.app.state.catalog_cache.invalidate_listing(str(listing_id))
+    return image
 
 
 @router.delete("/listings/{listing_id}/images/{image_id}", status_code=204)
@@ -165,6 +185,8 @@ async def delete_image(
     image_id: UUID,
     current_user: CurrentUser,
     session: DatabaseSession,
+    request: Request,
 ) -> Response:
     await _service(session).delete_image(current_user, listing_id, image_id)
+    await request.app.state.catalog_cache.invalidate_listing(str(listing_id))
     return Response(status_code=204)

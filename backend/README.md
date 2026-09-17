@@ -68,11 +68,12 @@ it active, and retaining the previous entry for at least the maximum access-toke
 commit real signing keys. Staging and production refuse to start without explicitly configured
 keys.
 
-Registration, login, and refresh endpoints also have bounded in-process fixed-window rate limits.
+Registration, login, and refresh endpoints have atomic Redis-backed fixed-window rate limits.
 Keys are HMAC digests of the client address and submitted identifier or token; raw credentials and
-identifiers are never retained by the limiter. This is a per-process defense-in-depth control, not
-a global quota: deployments with multiple API replicas receive distributed Redis-backed limits in
-Feature 09. Configure the window, route limits, and memory bound with the
+identifiers are never retained by the limiter. If Redis is absent or times out, the API keeps the
+bounded in-process limiter as a defense-in-depth fallback, so authentication remains available;
+that fallback is intentionally per-process and therefore weaker across replicas. Configure the
+window, route limits, and fallback memory bound with the
 `MAVUNO_AUTH_RATE_LIMIT_*` variables. The API returns `429`, the stable
 `auth_rate_limit_exceeded` code, and a `Retry-After` header when a limit is reached. Client address
 resolution intentionally ignores forwarding headers until trusted-proxy handling is configured.
@@ -109,6 +110,21 @@ pagination, sorting, ETags, and bounded cache headers. Listing and inventory mut
 farmer owner, lock inventory rows, and increment a version so concurrent changes cannot silently
 overwrite one another.
 
+Feature 09 caches only the hot listing-detail representation. Redis keys are
+`mavuno:v1:catalog:listing:{listing_uuid}` with a 15-second default TTL. Listing, image, inventory,
+checkout-reservation, and reservation-release mutations own invalidation after their database
+commit. A companion `mavuno:v1:catalog:listing-generation:{listing_uuid}` counter makes cache fill
+conditional on the generation observed before the database read; this prevents a concurrent old
+read from repopulating the key after stock invalidation. Generation counters expire after a
+bounded guard interval so archived listings do not leave permanent Redis keys. Browser/shared HTTP caches must
+revalidate, which prevents a longer client cache from outliving stock changes. Redis failures
+bypass cache reads and writes for a short circuit-breaker cooldown; the database remains
+authoritative. A failed invalidation can leave an entry only until the bounded TTL, and Redis being
+unavailable never blocks a catalog response.
+
+Redis is an external optional dependency configured with `MAVUNO_REDIS_URL`; it is not supervised
+inside the API image. No separate load balancer or Docker Compose service is introduced.
+
 ## Orders and Kenyan payments
 
 Feature 06 adds one active cart per buyer, idempotent checkout, immutable order-item snapshots,
@@ -144,6 +160,17 @@ uv run ruff format --check .
 uv run ruff check .
 uv run mypy
 uv run pytest
+```
+
+Every response includes `X-DB-Query-Count`. Queries slower than
+`MAVUNO_DATABASE_SLOW_QUERY_MS` and requests exceeding `MAVUNO_DATABASE_QUERY_BUDGET` emit
+structured warnings without exposing SQL parameters. Low-cardinality cache, Redis, rate-limit,
+query, and budget counters are available at `GET /health/metrics`; production deployments should
+restrict that operational endpoint at the ingress. A representative k6 workload is provided at
+`tests/load/catalog_hot_get.js` and can be run against seeded data:
+
+```bash
+k6 run -e BASE_URL=http://127.0.0.1:8000 -e LISTING_ID=<uuid> tests/load/catalog_hot_get.js
 ```
 
 ## Container
