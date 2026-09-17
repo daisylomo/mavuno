@@ -41,6 +41,24 @@ class Settings(BaseSettings):
     auth_rate_limit_max_entries: int = Field(default=10_000, ge=100, le=1_000_000)
     push_token_hash_key: SecretStr | None = Field(default=None, min_length=32)
     push_token_encryption_key: SecretStr | None = None
+    order_reservation_minutes: int = Field(default=15, ge=5, le=120)
+    payments_enabled: bool = False
+    daraja_environment: Literal["sandbox", "production"] = "sandbox"
+    daraja_sandbox_base_url: AnyHttpUrl = AnyHttpUrl("https://sandbox.safaricom.co.ke")
+    daraja_production_base_url: AnyHttpUrl = AnyHttpUrl("https://api.safaricom.co.ke")
+    daraja_consumer_key: SecretStr | None = None
+    daraja_consumer_secret: SecretStr | None = None
+    daraja_shortcode: str | None = None
+    daraja_passkey: SecretStr | None = None
+    daraja_callback_base_url: AnyHttpUrl | None = None
+    daraja_callback_token: SecretStr | None = Field(default=None, min_length=32)
+    daraja_request_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    daraja_retry_limit: int = Field(default=3, ge=0, le=10)
+    bank_provider_name: str | None = None
+    bank_base_url: AnyHttpUrl | None = None
+    bank_client_id: SecretStr | None = None
+    bank_client_secret: SecretStr | None = None
+    worker_poll_seconds: float = Field(default=2.0, ge=0.1, le=60)
 
     @model_validator(mode="after")
     def validate_auth_keys(self) -> Settings:
@@ -73,6 +91,23 @@ class Settings(BaseSettings):
             == self.push_token_encryption_key.get_secret_value()
         ):
             raise ValueError("Push-token hash and encryption keys must be distinct")
+        return self
+
+    @model_validator(mode="after")
+    def validate_payment_settings(self) -> Settings:
+        if self.payments_enabled:
+            required = (
+                self.daraja_consumer_key,
+                self.daraja_consumer_secret,
+                self.daraja_shortcode,
+                self.daraja_passkey,
+                self.daraja_callback_base_url,
+                self.daraja_callback_token,
+            )
+            if any(value is None for value in required):
+                raise ValueError(
+                    "Daraja credentials, shortcode, callback URL, and token are required"
+                )
         return self
 
 

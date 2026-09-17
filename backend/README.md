@@ -109,6 +109,33 @@ pagination, sorting, ETags, and bounded cache headers. Listing and inventory mut
 farmer owner, lock inventory rows, and increment a version so concurrent changes cannot silently
 overwrite one another.
 
+## Orders and Kenyan payments
+
+Feature 06 adds one active cart per buyer, idempotent checkout, immutable order-item snapshots,
+row-locked inventory reservations, reservation expiry/release, payment events, reconciliation,
+and a durable database outbox. The API and worker are separate Supervisor programs in the same
+lightweight image; MySQL remains an external service and no Docker Compose file is used.
+
+The payment boundary supports `mpesa` and `bank` rails. M-PESA uses Safaricom Daraja STK Push.
+Callbacks are treated only as notifications: the worker queries Daraja directly and marks an order
+paid only after amount, currency, payer phone, merchant shortcode, and transaction reference
+checks pass. Callback payloads are reduced to a safe allowlist before storage. Enable the rail only
+after sandbox credentials and a random callback-path token have been injected:
+
+```text
+MAVUNO_PAYMENTS_ENABLED=true
+MAVUNO_DARAJA_ENVIRONMENT=sandbox
+MAVUNO_DARAJA_CALLBACK_BASE_URL=https://your-api.example
+```
+
+The bank adapter is intentionally fail-closed until a regulated Kenyan bank/payment provider is
+selected. The generic bank configuration keys reserve that integration boundary; they do not
+pretend that a transfer has been validated.
+
+Commerce endpoints live under `/api/v1`: cart item management, checkout, order retrieval, payment
+initiation/retrieval, and the tokenized Daraja callback endpoint. Every retryable client operation
+requires an `Idempotency-Key` header.
+
 ## Verification
 
 ```bash
@@ -121,9 +148,9 @@ uv run pytest
 
 ## Container
 
-No Docker Compose file is used. The production container runs Supervisor as PID 1 and Supervisor
-runs the API. External services will be supplied with environment variables as their features are
-introduced.
+No Docker Compose file is used. The production container runs Supervisor as PID 1; Supervisor
+runs both the API and the outbox/payment worker. MySQL and provider APIs are external services
+supplied through environment configuration.
 
 ```bash
 docker build -t mavuno-backend .
