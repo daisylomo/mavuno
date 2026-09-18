@@ -34,3 +34,9 @@ async def readiness(request: Request) -> HealthResponse | JSONResponse:
             content=HealthResponse(status="not_ready").model_dump(),
         )
     return HealthResponse(status="ready")
+
+
+@router.get("/metrics")
+async def metrics(request: Request) -> dict[str, int]:
+    """Expose low-cardinality process counters; deployment may scrape or translate these."""
+    return dict(request.app.state.metrics.snapshot())

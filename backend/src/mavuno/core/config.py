@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     database_pool_size: int = Field(default=5, ge=1, le=50)
     database_max_overflow: int = Field(default=10, ge=0, le=100)
     database_pool_recycle_seconds: int = Field(default=1800, ge=60)
+    database_slow_query_ms: int = Field(default=250, ge=10, le=60_000)
+    database_query_budget: int = Field(default=30, ge=1, le=1000)
+    redis_url: SecretStr | None = None
+    redis_connect_timeout_seconds: float = Field(default=0.25, gt=0, le=5)
+    redis_operation_timeout_seconds: float = Field(default=0.1, gt=0, le=5)
+    redis_failure_cooldown_seconds: int = Field(default=10, ge=1, le=300)
+    catalog_listing_cache_ttl_seconds: int = Field(default=15, ge=1, le=300)
     auth_issuer: str = "mavuno-api"
     auth_audience: str = "mavuno-mobile"
     auth_active_key_id: str = "local-v1"
