@@ -1,11 +1,19 @@
 """Import all ORM models so Alembic can discover their metadata."""
 
+from mavuno.db.models.catalog import (
+    InventoryMovement,
+    Listing,
+    ListingImage,
+    ProduceCategory,
+    Product,
+)
 from mavuno.db.models.identity import (
     Address,
     BuyerProfile,
     DeviceInstallation,
     FarmerProfile,
     Profile,
+    ProfileAuditEvent,
     RefreshToken,
     Role,
     User,
@@ -17,7 +25,13 @@ __all__ = [
     "BuyerProfile",
     "DeviceInstallation",
     "FarmerProfile",
+    "InventoryMovement",
+    "Listing",
+    "ListingImage",
     "Profile",
+    "ProfileAuditEvent",
+    "ProduceCategory",
+    "Product",
     "RefreshToken",
     "Role",
     "User",

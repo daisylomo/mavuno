@@ -7,11 +7,11 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from mavuno.core.config import Settings
 from mavuno.db import Database
-from mavuno.db.models import User
+from mavuno.db.models import DeviceInstallation, ProfileAuditEvent, User
 from mavuno.main import create_app
 
 TEST_DATABASE_URL = os.getenv("MAVUNO_TEST_DATABASE_URL")
@@ -85,3 +85,69 @@ def test_readiness_endpoint_checks_mysql() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ready"}
+
+
+@pytest.mark.anyio
+async def test_profile_audit_and_installation_uniqueness() -> None:
+    assert TEST_DATABASE_URL is not None
+    database = Database(
+        Settings(environment="test", database_url=SecretStr(TEST_DATABASE_URL)),
+    )
+    user_id = uuid4()
+    installation_id = uuid4()
+
+    try:
+        async with database.session() as session:
+            session.add(
+                User(
+                    id=user_id,
+                    email=f"profile-{user_id}@example.test",
+                    password_hash="not-a-real-hash",
+                    status="active",
+                )
+            )
+            await session.flush()
+            session.add(
+                DeviceInstallation(
+                    user_id=user_id,
+                    installation_id=installation_id,
+                    platform="android",
+                    push_token_ciphertext=b"c" * 6000,
+                    push_token_hash=b"a" * 32,
+                )
+            )
+            session.add(
+                ProfileAuditEvent(
+                    user_id=user_id,
+                    actor_user_id=user_id,
+                    action="created",
+                    entity_type="device_installation",
+                    entity_id=installation_id,
+                    changed_fields=["platform", "push_token"],
+                )
+            )
+            await session.commit()
+
+        async with database.session() as session:
+            audit_count = await session.execute(
+                text("SELECT COUNT(*) FROM profile_audit_events WHERE user_id = :user_id"),
+                {"user_id": user_id.bytes},
+            )
+            assert audit_count.scalar_one() == 1
+            session.add(
+                DeviceInstallation(
+                    user_id=user_id,
+                    installation_id=installation_id,
+                    platform="ios",
+                )
+            )
+            with pytest.raises(IntegrityError):
+                await session.commit()
+            await session.rollback()
+    finally:
+        async with database.session() as session:
+            await session.execute(
+                text("DELETE FROM users WHERE id = :user_id"), {"user_id": user_id.bytes}
+            )
+            await session.commit()
+        await database.dispose()

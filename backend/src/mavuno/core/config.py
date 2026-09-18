@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     auth_login_rate_limit: int = Field(default=10, ge=1, le=1000)
     auth_refresh_rate_limit: int = Field(default=20, ge=1, le=1000)
     auth_rate_limit_max_entries: int = Field(default=10_000, ge=100, le=1_000_000)
+    push_token_hash_key: SecretStr | None = Field(default=None, min_length=32)
+    push_token_encryption_key: SecretStr | None = None
 
     @model_validator(mode="after")
     def validate_auth_keys(self) -> Settings:
@@ -52,6 +54,25 @@ class Settings(BaseSettings):
             raise ValueError("MAVUNO_AUTH_ACTIVE_KEY_ID must identify a configured signing key")
         if any(len(secret.get_secret_value()) < 32 for secret in self.auth_signing_keys.values()):
             raise ValueError("Every authentication signing key must be at least 32 characters")
+        return self
+
+    @model_validator(mode="after")
+    def validate_push_token_secrets(self) -> Settings:
+        from mavuno.profiles.push_tokens import validate_fernet_key
+
+        if self.environment == "production" and (
+            self.push_token_hash_key is None or self.push_token_encryption_key is None
+        ):
+            raise ValueError("Push-token hash and encryption keys are required in production")
+        if self.push_token_encryption_key is not None:
+            validate_fernet_key(self.push_token_encryption_key.get_secret_value())
+        if (
+            self.push_token_hash_key is not None
+            and self.push_token_encryption_key is not None
+            and self.push_token_hash_key.get_secret_value()
+            == self.push_token_encryption_key.get_secret_value()
+        ):
+            raise ValueError("Push-token hash and encryption keys must be distinct")
         return self
 
 
