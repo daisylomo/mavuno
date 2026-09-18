@@ -200,6 +200,9 @@ def test_query_budget_header_and_metrics_endpoint() -> None:
     assert budget.headers["X-DB-Query-Count"] == "2"
     assert metrics.status_code == 200
     assert metrics.json()["database_query_budget_exceeded_total"] == 1
+    assert metrics.json()["http_requests_total"] == 2
+    assert metrics.json()["http_responses_2xx_total"] == 2
+    assert metrics.json()["http_request_duration_le_inf_total"] == 2
 
 
 @pytest.mark.anyio

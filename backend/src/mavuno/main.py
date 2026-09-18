@@ -52,7 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.catalog_cache = catalog_cache
     app.state.auth_rate_limiter = DistributedAuthRateLimiter(settings, redis, metrics)
 
-    app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(RequestIdMiddleware, metrics=metrics)
     app.add_middleware(
         QueryBudgetMiddleware, budget=settings.database_query_budget, metrics=metrics
     )
