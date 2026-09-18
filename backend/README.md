@@ -49,6 +49,34 @@ uv run alembic -c conf/alembic.ini stamp 0001_identity_baseline
 Application startup never calls `metadata.create_all()`. All later schema changes require a new
 numbered migration.
 
+## Authentication
+
+The versioned authentication API is available under `/api/v1/auth` and supports registration,
+login, refresh-token rotation, logout, and the authenticated `/me` endpoint. Register with either
+an email address, a Kenyan/local or international phone number, a password, and the `buyer` or
+`farmer` role. Phone numbers are stored in E.164 form (for example, `0712345678` becomes
+`+254712345678`).
+
+Access tokens are short-lived signed bearer tokens. Refresh tokens are opaque, stored only as
+SHA-256 hashes, rotated on every use, and protected by token-family reuse detection. Clients must
+replace the stored refresh token atomically after a successful refresh. A reuse response requires
+the user to sign in again.
+
+Configure signing secrets through `MAVUNO_AUTH_SIGNING_KEYS`, a JSON object keyed by key ID, and
+select the signing key with `MAVUNO_AUTH_ACTIVE_KEY_ID`. Rotate keys by adding a new entry, making
+it active, and retaining the previous entry for at least the maximum access-token lifetime. Never
+commit real signing keys. Staging and production refuse to start without explicitly configured
+keys.
+
+Registration, login, and refresh endpoints also have bounded in-process fixed-window rate limits.
+Keys are HMAC digests of the client address and submitted identifier or token; raw credentials and
+identifiers are never retained by the limiter. This is a per-process defense-in-depth control, not
+a global quota: deployments with multiple API replicas receive distributed Redis-backed limits in
+Feature 09. Configure the window, route limits, and memory bound with the
+`MAVUNO_AUTH_RATE_LIMIT_*` variables. The API returns `429`, the stable
+`auth_rate_limit_exceeded` code, and a `Retry-After` header when a limit is reached. Client address
+resolution intentionally ignores forwarding headers until trusted-proxy handling is configured.
+
 ## Verification
 
 ```bash

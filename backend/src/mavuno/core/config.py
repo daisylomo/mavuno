@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, SecretStr
+from pydantic import AnyHttpUrl, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 API_V1_PREFIX = "/api/v1"
@@ -28,6 +28,31 @@ class Settings(BaseSettings):
     database_pool_size: int = Field(default=5, ge=1, le=50)
     database_max_overflow: int = Field(default=10, ge=0, le=100)
     database_pool_recycle_seconds: int = Field(default=1800, ge=60)
+    auth_issuer: str = "mavuno-api"
+    auth_audience: str = "mavuno-mobile"
+    auth_active_key_id: str = "local-v1"
+    auth_signing_keys: dict[str, SecretStr] = Field(default_factory=dict)
+    auth_access_token_minutes: int = Field(default=15, ge=1, le=60)
+    auth_refresh_token_days: int = Field(default=30, ge=1, le=90)
+    auth_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    auth_register_rate_limit: int = Field(default=5, ge=1, le=1000)
+    auth_login_rate_limit: int = Field(default=10, ge=1, le=1000)
+    auth_refresh_rate_limit: int = Field(default=20, ge=1, le=1000)
+    auth_rate_limit_max_entries: int = Field(default=10_000, ge=100, le=1_000_000)
+
+    @model_validator(mode="after")
+    def validate_auth_keys(self) -> Settings:
+        if not self.auth_signing_keys:
+            if self.environment in {"staging", "production"}:
+                raise ValueError("MAVUNO_AUTH_SIGNING_KEYS is required outside local/test")
+            self.auth_signing_keys = {
+                self.auth_active_key_id: SecretStr("local-only-change-this-32-byte-key")
+            }
+        if self.auth_active_key_id not in self.auth_signing_keys:
+            raise ValueError("MAVUNO_AUTH_ACTIVE_KEY_ID must identify a configured signing key")
+        if any(len(secret.get_secret_value()) < 32 for secret in self.auth_signing_keys.values()):
+            raise ValueError("Every authentication signing key must be at least 32 characters")
+        return self
 
 
 @lru_cache
