@@ -136,6 +136,18 @@ Commerce endpoints live under `/api/v1`: cart item management, checkout, order r
 initiation/retrieval, and the tokenized Daraja callback endpoint. Every retryable client operation
 requires an `Idempotency-Key` header.
 
+## Fulfilment coordination
+
+Feature 07 adds one order-level fulfilment record for pickup or delivery coordination. Buyers
+choose the method, location snapshot, time window, and notes after verified payment. Farmers who
+own an item in that order can view the coordination and advance preparation states; buyers confirm
+completion, while administrators can resolve exceptional transitions. Each transition is audited
+and updates use a version number plus database row locks to reject stale concurrent writes.
+
+Use `GET` and `PATCH /api/v1/fulfilments/{order_id}` to read or establish coordination, and
+`POST /api/v1/fulfilments/{order_id}/status` for state transitions. The scope ends at coordination
+and handover status: the backend deliberately does not assign drivers, vehicles, routes, or fleets.
+
 ## Verification
 
 ```bash

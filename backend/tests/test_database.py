@@ -82,6 +82,8 @@ def test_identity_metadata_contains_baseline_tables() -> None:
         "carts",
         "device_installations",
         "farmer_profiles",
+        "fulfilment_status_history",
+        "fulfilments",
         "inventory_movements",
         "listing_images",
         "listings",
