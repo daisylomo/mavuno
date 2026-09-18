@@ -29,6 +29,7 @@ from mavuno.db.models import (
 from mavuno.main import create_app
 
 TEST_DATABASE_URL = os.getenv("MAVUNO_TEST_DATABASE_URL")
+TEST_REDIS_URL = os.getenv("MAVUNO_TEST_REDIS_URL")
 
 pytestmark = [
     pytest.mark.integration,
@@ -82,7 +83,13 @@ def test_catalog_http_contract_and_cache_headers() -> None:
             await database.dispose()
 
     asyncio.run(prepare())
-    app = create_app(Settings(environment="test", database_url=SecretStr(TEST_DATABASE_URL)))
+    app = create_app(
+        Settings(
+            environment="test",
+            database_url=SecretStr(TEST_DATABASE_URL),
+            redis_url=SecretStr(TEST_REDIS_URL) if TEST_REDIS_URL else None,
+        )
+    )
 
     async def authenticated() -> AuthenticatedUser:
         return actor
@@ -167,6 +174,11 @@ def test_catalog_http_contract_and_cache_headers() -> None:
             )
             assert changed.status_code == 200
             assert changed.json()["available_quantity"] == "7.000"
+            fresh = client.get(f"/api/v1/listings/{listing_id}")
+            assert fresh.status_code == 200
+            assert fresh.json()["available_quantity"] == "7.000"
+            if TEST_REDIS_URL:
+                assert fresh.headers["x-cache"] == "MISS"
 
             stale = client.patch(
                 f"/api/v1/listings/{listing_id}",

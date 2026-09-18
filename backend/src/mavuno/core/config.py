@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     database_pool_size: int = Field(default=5, ge=1, le=50)
     database_max_overflow: int = Field(default=10, ge=0, le=100)
     database_pool_recycle_seconds: int = Field(default=1800, ge=60)
+    database_slow_query_ms: int = Field(default=250, ge=10, le=60_000)
+    database_query_budget: int = Field(default=30, ge=1, le=1000)
+    redis_url: SecretStr | None = None
+    redis_connect_timeout_seconds: float = Field(default=0.25, gt=0, le=5)
+    redis_operation_timeout_seconds: float = Field(default=0.1, gt=0, le=5)
+    redis_failure_cooldown_seconds: int = Field(default=10, ge=1, le=300)
+    catalog_listing_cache_ttl_seconds: int = Field(default=15, ge=1, le=300)
     auth_issuer: str = "mavuno-api"
     auth_audience: str = "mavuno-mobile"
     auth_active_key_id: str = "local-v1"
@@ -59,6 +66,18 @@ class Settings(BaseSettings):
     bank_client_id: SecretStr | None = None
     bank_client_secret: SecretStr | None = None
     worker_poll_seconds: float = Field(default=2.0, ge=0.1, le=60)
+    notification_push_url: AnyHttpUrl | None = None
+    notification_push_api_key: SecretStr | None = None
+    notification_push_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    outbox_lease_seconds: int = Field(default=60, ge=10, le=600)
+    outbox_retry_cap_seconds: int = Field(default=900, ge=30, le=3600)
+    premium_enabled: bool = False
+    premium_provider_base_url: AnyHttpUrl | None = None
+    premium_provider_api_key: SecretStr | None = None
+    premium_webhook_secret: SecretStr | None = Field(default=None, min_length=32)
+    premium_callback_token: SecretStr | None = Field(default=None, min_length=32)
+    premium_provider_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    premium_reconcile_attempts: int = Field(default=5, ge=1, le=12)
 
     @model_validator(mode="after")
     def validate_auth_keys(self) -> Settings:
@@ -72,6 +91,12 @@ class Settings(BaseSettings):
             raise ValueError("MAVUNO_AUTH_ACTIVE_KEY_ID must identify a configured signing key")
         if any(len(secret.get_secret_value()) < 32 for secret in self.auth_signing_keys.values()):
             raise ValueError("Every authentication signing key must be at least 32 characters")
+        return self
+
+    @model_validator(mode="after")
+    def validate_notification_provider(self) -> Settings:
+        if (self.notification_push_url is None) != (self.notification_push_api_key is None):
+            raise ValueError("Push provider URL and API key must be configured together")
         return self
 
     @model_validator(mode="after")
@@ -108,6 +133,20 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Daraja credentials, shortcode, callback URL, and token are required"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def validate_premium_settings(self) -> Settings:
+        configured = (
+            self.premium_provider_base_url,
+            self.premium_provider_api_key,
+            self.premium_webhook_secret,
+            self.premium_callback_token,
+        )
+        if self.premium_enabled and any(value is None for value in configured):
+            raise ValueError(
+                "Premium provider URL, API key, webhook secret, and callback token are required"
+            )
         return self
 
 

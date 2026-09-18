@@ -53,7 +53,14 @@ class StopAfterOneIteration:
 
 
 def job(job_type: str, attempts: int = 1, max_attempts: int = 3) -> OutboxJob:
-    key = "payment_id" if job_type == "payment_status_query" else "order_id"
+    if job_type == "payment_status_query":
+        key = "payment_id"
+    elif job_type == "notification_push":
+        key = "notification_id"
+    elif job_type == "subscription_status_query":
+        key = "subscription_id"
+    else:
+        key = "order_id"
     value = OutboxJob(
         id=uuid4(),
         job_type=job_type,
@@ -127,6 +134,64 @@ async def test_worker_retries_then_dead_letters_provider_failures(
     assert current.status == expected
     assert current.last_error == "temporarily offline"
     assert current.leased_until is None
+
+
+@pytest.mark.anyio
+async def test_worker_processes_notification_push(monkeypatch: pytest.MonkeyPatch) -> None:
+    current = job("notification_push")
+    claim_repository = SimpleNamespace(claim_jobs=AsyncMock(return_value=[current]))
+    monkeypatch.setattr(worker, "CommerceRepository", lambda _session: claim_repository)
+    delivery = MagicMock()
+    delivery.deliver = AsyncMock()
+    monkeypatch.setattr(worker, "MessagingRepository", MagicMock())
+    monkeypatch.setattr(worker, "HttpPushProvider", MagicMock())
+    monkeypatch.setattr(worker, "PushTokenProtector", MagicMock())
+    monkeypatch.setattr(worker, "NotificationDeliveryService", lambda *_args: delivery)
+    claim_session = MagicMock()
+    work_session = MagicMock()
+    work_session.get = AsyncMock(return_value=current)
+    work_session.commit = AsyncMock()
+    settings = Settings(
+        environment="test",
+        notification_push_url="https://push.example.test/send",
+        notification_push_api_key=SecretStr("api-key"),
+        push_token_encryption_key=SecretStr("MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="),
+        push_token_hash_key=SecretStr("different-hash-secret-32-characters"),
+    )
+    assert (
+        await worker.process_batch(
+            cast(Database, FakeDatabase([claim_session, work_session])), settings
+        )
+        == 1
+    )
+    delivery.deliver.assert_awaited_once()
+    assert current.status == "completed"
+
+
+@pytest.mark.anyio
+async def test_worker_processes_subscription_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = job("subscription_status_query")
+    claim_repository = SimpleNamespace(claim_jobs=AsyncMock(return_value=[current]))
+    monkeypatch.setattr(worker, "CommerceRepository", lambda _session: claim_repository)
+    premium_service = MagicMock()
+    premium_service.reconcile = AsyncMock()
+    monkeypatch.setattr(worker, "PremiumRepository", MagicMock())
+    monkeypatch.setattr(worker, "SubscriptionService", lambda *_args: premium_service)
+    claim_session = MagicMock()
+    work_session = MagicMock()
+    work_session.get = AsyncMock(return_value=current)
+    work_session.commit = AsyncMock()
+    assert (
+        await worker.process_batch(
+            cast(Database, FakeDatabase([claim_session, work_session])),
+            Settings(environment="test"),
+        )
+        == 1
+    )
+    premium_service.reconcile.assert_awaited_once()
+    assert current.status == "completed"
 
 
 @pytest.mark.anyio

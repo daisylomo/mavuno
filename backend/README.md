@@ -68,11 +68,12 @@ it active, and retaining the previous entry for at least the maximum access-toke
 commit real signing keys. Staging and production refuse to start without explicitly configured
 keys.
 
-Registration, login, and refresh endpoints also have bounded in-process fixed-window rate limits.
+Registration, login, and refresh endpoints have atomic Redis-backed fixed-window rate limits.
 Keys are HMAC digests of the client address and submitted identifier or token; raw credentials and
-identifiers are never retained by the limiter. This is a per-process defense-in-depth control, not
-a global quota: deployments with multiple API replicas receive distributed Redis-backed limits in
-Feature 09. Configure the window, route limits, and memory bound with the
+identifiers are never retained by the limiter. If Redis is absent or times out, the API keeps the
+bounded in-process limiter as a defense-in-depth fallback, so authentication remains available;
+that fallback is intentionally per-process and therefore weaker across replicas. Configure the
+window, route limits, and fallback memory bound with the
 `MAVUNO_AUTH_RATE_LIMIT_*` variables. The API returns `429`, the stable
 `auth_rate_limit_exceeded` code, and a `Retry-After` header when a limit is reached. Client address
 resolution intentionally ignores forwarding headers until trusted-proxy handling is configured.
@@ -108,6 +109,21 @@ and an append-only inventory movement history. Catalog reads support filters, se
 pagination, sorting, ETags, and bounded cache headers. Listing and inventory mutations verify the
 farmer owner, lock inventory rows, and increment a version so concurrent changes cannot silently
 overwrite one another.
+
+Feature 09 caches only the hot listing-detail representation. Redis keys are
+`mavuno:v1:catalog:listing:{listing_uuid}` with a 15-second default TTL. Listing, image, inventory,
+checkout-reservation, and reservation-release mutations own invalidation after their database
+commit. A companion `mavuno:v1:catalog:listing-generation:{listing_uuid}` counter makes cache fill
+conditional on the generation observed before the database read; this prevents a concurrent old
+read from repopulating the key after stock invalidation. Generation counters expire after a
+bounded guard interval so archived listings do not leave permanent Redis keys. Browser/shared HTTP caches must
+revalidate, which prevents a longer client cache from outliving stock changes. Redis failures
+bypass cache reads and writes for a short circuit-breaker cooldown; the database remains
+authoritative. A failed invalidation can leave an entry only until the bounded TTL, and Redis being
+unavailable never blocks a catalog response.
+
+Redis is an external optional dependency configured with `MAVUNO_REDIS_URL`; it is not supervised
+inside the API image. No separate load balancer or Docker Compose service is introduced.
 
 ## Orders and Kenyan payments
 
@@ -148,6 +164,45 @@ Use `GET` and `PATCH /api/v1/fulfilments/{order_id}` to read or establish coordi
 `POST /api/v1/fulfilments/{order_id}/status` for state transitions. The scope ends at coordination
 and handover status: the backend deliberately does not assign drivers, vehicles, routes, or fleets.
 
+## Messaging and notifications
+
+Feature 08 adds HTTP-polled conversations scoped to an order or listing. A conversation contains
+exactly one buyer and one farmer; order membership is derived from immutable order items and
+listing ownership is derived from the listing. All reads and mutations include the authenticated
+member in their query so foreign UUIDs are returned as not found. Client-generated message UUIDs
+make sends idempotent, and per-member read markers never move backwards.
+
+Each message transaction also inserts notification history and a deduplicated `notification_push`
+outbox job. The existing worker claims jobs with `SKIP LOCKED`, a bounded lease, capped exponential
+backoff, and dead-letter state. Delivery is idempotent per notification/device pair. Push tokens
+remain encrypted at rest and are decrypted only at the provider boundary; they are never returned
+by the API or written to logs. Configure the HTTPS push gateway with
+`MAVUNO_NOTIFICATION_PUSH_URL` and `MAVUNO_NOTIFICATION_PUSH_API_KEY`. If it is absent, delivery
+fails closed and follows the normal retry/dead-letter policy while notification history remains
+available through polling.
+
+Messaging endpoints under `/api/v1` cover conversation creation/listing, message send/polling,
+read markers, notification history/read state, and push preferences. WebSockets are intentionally
+not required for this release.
+
+## Premium services
+
+Feature 10 adds provider-neutral plans and subscriptions, verified entitlements, prebooking, and
+permissioned farmer insights. Subscription initiation is idempotent and produces a pending record;
+neither a client response nor a webhook grants access. The callback is authenticated with a secret
+path token and HMAC signature, persisted in redacted form, and converted to an outbox status-query
+job. Only a matching server-to-server provider result—account reference, plan, amount, currency,
+and valid billing period—activates an entitlement.
+
+Prebooking is available to buyers with the verified `prebooking` entitlement. The selected farmer
+can accept, reject, or fulfil the request without buying a subscription of their own. Farmer
+insights require the verified `insights` entitlement and are calculated from transactional data;
+they do not duplicate order or inventory records. Produce suggestions remain deferred until there
+is a measurable product requirement.
+
+The generic HTTPS billing adapter is disabled by default. Configure all `MAVUNO_PREMIUM_*`
+settings together; partial or production-placeholder configuration fails closed.
+
 ## Verification
 
 ```bash
@@ -156,6 +211,17 @@ uv run ruff format --check .
 uv run ruff check .
 uv run mypy
 uv run pytest
+```
+
+Every response includes `X-DB-Query-Count`. Queries slower than
+`MAVUNO_DATABASE_SLOW_QUERY_MS` and requests exceeding `MAVUNO_DATABASE_QUERY_BUDGET` emit
+structured warnings without exposing SQL parameters. Low-cardinality cache, Redis, rate-limit,
+query, and budget counters are available at `GET /health/metrics`; production deployments should
+restrict that operational endpoint at the ingress. A representative k6 workload is provided at
+`tests/load/catalog_hot_get.js` and can be run against seeded data:
+
+```bash
+k6 run -e BASE_URL=http://127.0.0.1:8000 -e LISTING_ID=<uuid> tests/load/catalog_hot_get.js
 ```
 
 ## Container

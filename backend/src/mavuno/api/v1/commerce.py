@@ -54,9 +54,11 @@ async def checkout(
     session: DatabaseSession,
     request: Request,
 ) -> OrderResponse:
-    return await CheckoutService(CommerceRepository(session), request.app.state.settings).checkout(
-        current_user, idempotency_key, payload.delivery_address_id
-    )
+    return await CheckoutService(
+        CommerceRepository(session),
+        request.app.state.settings,
+        getattr(request.app.state, "catalog_cache", None),
+    ).checkout(current_user, idempotency_key, payload.delivery_address_id)
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)

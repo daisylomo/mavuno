@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from mavuno.core.config import Settings
+from mavuno.core.performance import PerformanceMetrics, RedisBackend
 
 
 @dataclass(slots=True)
@@ -83,3 +84,45 @@ class AuthRateLimiter:
             len(part.encode("utf-8")).to_bytes(4, "big") + part.encode("utf-8") for part in parts
         )
         return hmac.new(self._digest_key, message, hashlib.sha256).digest()
+
+
+class DistributedAuthRateLimiter:
+    """Atomic Redis limiter with the bounded local limiter as an outage fallback."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        backend: RedisBackend,
+        metrics: PerformanceMetrics,
+        *,
+        fallback: AuthRateLimiter | None = None,
+    ) -> None:
+        self._window_seconds = settings.auth_rate_limit_window_seconds
+        self._limits = {
+            "register": settings.auth_register_rate_limit,
+            "login": settings.auth_login_rate_limit,
+            "refresh": settings.auth_refresh_rate_limit,
+        }
+        self._backend = backend
+        self._metrics = metrics
+        self._fallback = fallback or AuthRateLimiter(settings)
+
+    async def check(self, scope: str, client_address: str, subject: str) -> None:
+        keys = [
+            self._redis_key(scope, "client", client_address),
+            self._redis_key(scope, "subject", subject),
+        ]
+        result = await self._backend.rate_limit(keys, self._limits[scope], self._window_seconds)
+        if result is None:
+            self._metrics.increment("auth_rate_limit_local_fallback_total")
+            self._fallback.check(scope, client_address, subject)
+            return
+        self._metrics.increment("auth_rate_limit_redis_checks_total")
+        count, retry_after = result
+        if count > self._limits[scope]:
+            self._metrics.increment("auth_rate_limit_rejections_total")
+            raise AuthRateLimitExceeded(retry_after)
+
+    def _redis_key(self, *parts: str) -> str:
+        digest = self._fallback._key(*parts).hex()
+        return f"mavuno:v1:rate-limit:auth:{digest}"
