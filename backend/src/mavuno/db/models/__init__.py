@@ -1,25 +1,81 @@
 """Import all ORM models so Alembic can discover their metadata."""
 
+from mavuno.db.models.catalog import (
+    InventoryMovement,
+    Listing,
+    ListingImage,
+    ProduceCategory,
+    Product,
+)
+from mavuno.db.models.commerce import (
+    Cart,
+    CartItem,
+    Order,
+    OrderItem,
+    OrderStatusHistory,
+    OutboxJob,
+    Payment,
+    PaymentEvent,
+    PaymentReconciliation,
+)
+from mavuno.db.models.fulfilment import Fulfilment, FulfilmentStatusHistory
 from mavuno.db.models.identity import (
     Address,
     BuyerProfile,
     DeviceInstallation,
     FarmerProfile,
     Profile,
+    ProfileAuditEvent,
     RefreshToken,
     Role,
     User,
     UserRole,
 )
+from mavuno.db.models.messaging import (
+    Conversation,
+    ConversationReadState,
+    Message,
+    Notification,
+    NotificationDelivery,
+    NotificationPreference,
+)
+from mavuno.db.models.premium import Plan, Prebooking, Subscription, SubscriptionEvent
 
 __all__ = [
     "Address",
     "BuyerProfile",
+    "Cart",
+    "CartItem",
+    "Conversation",
+    "ConversationReadState",
     "DeviceInstallation",
     "FarmerProfile",
+    "Fulfilment",
+    "FulfilmentStatusHistory",
+    "InventoryMovement",
+    "Listing",
+    "ListingImage",
+    "Message",
+    "Notification",
+    "NotificationDelivery",
+    "NotificationPreference",
+    "Order",
+    "OrderItem",
+    "OrderStatusHistory",
+    "OutboxJob",
+    "Payment",
+    "PaymentEvent",
+    "PaymentReconciliation",
+    "Plan",
     "Profile",
+    "ProfileAuditEvent",
+    "ProduceCategory",
+    "Product",
+    "Prebooking",
     "RefreshToken",
     "Role",
     "User",
     "UserRole",
+    "Subscription",
+    "SubscriptionEvent",
 ]
