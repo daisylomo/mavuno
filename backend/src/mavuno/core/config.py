@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     notification_push_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     outbox_lease_seconds: int = Field(default=60, ge=10, le=600)
     outbox_retry_cap_seconds: int = Field(default=900, ge=30, le=3600)
+    premium_enabled: bool = False
+    premium_provider_base_url: AnyHttpUrl | None = None
+    premium_provider_api_key: SecretStr | None = None
+    premium_webhook_secret: SecretStr | None = Field(default=None, min_length=32)
+    premium_callback_token: SecretStr | None = Field(default=None, min_length=32)
+    premium_provider_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    premium_reconcile_attempts: int = Field(default=5, ge=1, le=12)
 
     @model_validator(mode="after")
     def validate_auth_keys(self) -> Settings:
@@ -126,6 +133,20 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Daraja credentials, shortcode, callback URL, and token are required"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def validate_premium_settings(self) -> Settings:
+        configured = (
+            self.premium_provider_base_url,
+            self.premium_provider_api_key,
+            self.premium_webhook_secret,
+            self.premium_callback_token,
+        )
+        if self.premium_enabled and any(value is None for value in configured):
+            raise ValueError(
+                "Premium provider URL, API key, webhook secret, and callback token are required"
+            )
         return self
 
 

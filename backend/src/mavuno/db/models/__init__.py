@@ -39,6 +39,7 @@ from mavuno.db.models.messaging import (
     NotificationDelivery,
     NotificationPreference,
 )
+from mavuno.db.models.premium import Plan, Prebooking, Subscription, SubscriptionEvent
 
 __all__ = [
     "Address",
@@ -65,12 +66,16 @@ __all__ = [
     "Payment",
     "PaymentEvent",
     "PaymentReconciliation",
+    "Plan",
     "Profile",
     "ProfileAuditEvent",
     "ProduceCategory",
     "Product",
+    "Prebooking",
     "RefreshToken",
     "Role",
     "User",
     "UserRole",
+    "Subscription",
+    "SubscriptionEvent",
 ]

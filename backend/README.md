@@ -185,6 +185,24 @@ Messaging endpoints under `/api/v1` cover conversation creation/listing, message
 read markers, notification history/read state, and push preferences. WebSockets are intentionally
 not required for this release.
 
+## Premium services
+
+Feature 10 adds provider-neutral plans and subscriptions, verified entitlements, prebooking, and
+permissioned farmer insights. Subscription initiation is idempotent and produces a pending record;
+neither a client response nor a webhook grants access. The callback is authenticated with a secret
+path token and HMAC signature, persisted in redacted form, and converted to an outbox status-query
+job. Only a matching server-to-server provider result—account reference, plan, amount, currency,
+and valid billing period—activates an entitlement.
+
+Prebooking is available to buyers with the verified `prebooking` entitlement. The selected farmer
+can accept, reject, or fulfil the request without buying a subscription of their own. Farmer
+insights require the verified `insights` entitlement and are calculated from transactional data;
+they do not duplicate order or inventory records. Produce suggestions remain deferred until there
+is a measurable product requirement.
+
+The generic HTTPS billing adapter is disabled by default. Configure all `MAVUNO_PREMIUM_*`
+settings together; partial or production-placeholder configuration fails closed.
+
 ## Verification
 
 ```bash

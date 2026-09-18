@@ -17,6 +17,9 @@ from mavuno.messaging.provider import HttpPushProvider, PushProviderError
 from mavuno.messaging.repository import MessagingRepository
 from mavuno.messaging.service import NotificationDeliveryService
 from mavuno.payments.provider import PaymentProviderError
+from mavuno.premium.provider import PremiumProviderError
+from mavuno.premium.repository import PremiumRepository
+from mavuno.premium.service import SubscriptionService
 from mavuno.profiles.push_tokens import PushTokenProtector
 
 logger = logging.getLogger(__name__)
@@ -92,11 +95,15 @@ async def process_batch(database: Database, settings: Settings) -> int:
                     await NotificationDeliveryService(
                         messaging_repository, provider, protector
                     ).deliver(UUID(str(job.payload["notification_id"])))
+                elif job.job_type == "subscription_status_query":
+                    await SubscriptionService(PremiumRepository(session), settings).reconcile(
+                        UUID(str(job.payload["subscription_id"]))
+                    )
                 current.status = "completed"
                 current.completed_at = _now()
                 current.leased_until = None
                 await session.commit()
-            except (PaymentProviderError, PushProviderError) as exc:
+            except (PaymentProviderError, PushProviderError, PremiumProviderError) as exc:
                 current.last_error = str(exc)[:255]
                 current.leased_until = None
                 if current.attempts >= current.max_attempts:
