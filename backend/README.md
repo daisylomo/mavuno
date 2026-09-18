@@ -237,3 +237,11 @@ docker run --rm --env-file .env -p 8000:8000 mavuno-backend
 
 The image runs as the unprivileged `mavuno` user. Runtime logs go to stdout/stderr and the image
 health check calls `/health/live`.
+
+## Release operations
+
+Feature 11 adds W3C trace correlation, credential-redacted JSON logs, a generated OpenAPI contract,
+and CI gates for tests, migrations, dependency review, and container scanning. Operational SLOs,
+alerts, deployment/rollback steps, backup restoration, and secret rotation are documented in
+[`docs/operations.md`](docs/operations.md) and [`docs/slo.md`](docs/slo.md). Run the deployment
+smoke test with `uv run python scripts/smoke.py --base-url http://127.0.0.1:8000`.

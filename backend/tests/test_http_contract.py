@@ -25,6 +25,26 @@ def test_invalid_request_id_is_replaced(client: TestClient) -> None:
     UUID(response.headers["X-Request-ID"])
 
 
+def test_trace_context_is_propagated_without_trusting_parent_span(client: TestClient) -> None:
+    trace_id = "a" * 32
+    response = client.get("/health/live", headers={"traceparent": f"00-{trace_id}-{'b' * 16}-01"})
+
+    returned = response.headers["traceparent"].split("-")
+    assert returned[0] == "00"
+    assert returned[1] == trace_id
+    assert returned[2] != "b" * 16
+    assert returned[3] == "01"
+
+
+def test_invalid_trace_context_is_replaced(client: TestClient) -> None:
+    response = client.get("/health/live", headers={"traceparent": "not-a-trace"})
+
+    version, trace_id, span_id, flags = response.headers["traceparent"].split("-")
+    assert (version, flags) == ("00", "01")
+    assert len(trace_id) == 32
+    assert len(span_id) == 16
+
+
 def test_error_envelope_contains_request_id(client: TestClient) -> None:
     response = client.get("/does-not-exist", headers={"X-Request-ID": "not-found-1"})
 

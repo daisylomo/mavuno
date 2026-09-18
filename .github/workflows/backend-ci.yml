@@ -1,0 +1,61 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+  push:
+    branches: [backend]
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: mavuno_test
+          MYSQL_USER: mavuno
+          MYSQL_PASSWORD: test-password
+          MYSQL_ROOT_PASSWORD: root-test-password
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      MAVUNO_TEST_DATABASE_URL: mysql+aiomysql://mavuno:test-password@127.0.0.1:3306/mavuno_test?charset=utf8mb4
+      MAVUNO_REDIS_URL: redis://127.0.0.1:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run mypy
+      - run: uv run alembic -c conf/alembic.ini upgrade head
+      - run: uv run pytest
+      - run: uv run python scripts/export_openapi.py /tmp/openapi.json
+      - run: diff -u tests/contracts/openapi.json /tmp/openapi.json
+      - run: docker build --tag mavuno-backend:${{ github.sha }} .
+      - name: Scan runtime image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: mavuno-backend:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
