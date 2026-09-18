@@ -397,6 +397,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "email-validator" },
     { name = "fastapi" },
+    { name = "httpx2" },
     { name = "phonenumbers" },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
@@ -409,7 +410,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx2" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -424,6 +424,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=46.0.5,<47.0" },
     { name = "email-validator", specifier = ">=2.3.0,<3.0" },
     { name = "fastapi", specifier = ">=0.115.12,<1.0" },
+    { name = "httpx2", specifier = ">=2.13.0,<3.0" },
     { name = "phonenumbers", specifier = ">=9.0.15,<10.0" },
     { name = "pydantic-settings", specifier = ">=2.9.1,<3.0" },
     { name = "pyjwt", specifier = ">=2.10.1,<3.0" },
@@ -436,7 +437,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx2", specifier = ">=2.13.0,<3.0" },
     { name = "mypy", specifier = ">=1.15.0,<2.0" },
     { name = "pytest", specifier = ">=8.3.5,<9.0" },
     { name = "pytest-cov", specifier = ">=6.1.1,<7.0" },

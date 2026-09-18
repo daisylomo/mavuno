@@ -7,6 +7,17 @@ from mavuno.db.models.catalog import (
     ProduceCategory,
     Product,
 )
+from mavuno.db.models.commerce import (
+    Cart,
+    CartItem,
+    Order,
+    OrderItem,
+    OrderStatusHistory,
+    OutboxJob,
+    Payment,
+    PaymentEvent,
+    PaymentReconciliation,
+)
 from mavuno.db.models.identity import (
     Address,
     BuyerProfile,
@@ -23,11 +34,20 @@ from mavuno.db.models.identity import (
 __all__ = [
     "Address",
     "BuyerProfile",
+    "Cart",
+    "CartItem",
     "DeviceInstallation",
     "FarmerProfile",
     "InventoryMovement",
     "Listing",
     "ListingImage",
+    "Order",
+    "OrderItem",
+    "OrderStatusHistory",
+    "OutboxJob",
+    "Payment",
+    "PaymentEvent",
+    "PaymentReconciliation",
     "Profile",
     "ProfileAuditEvent",
     "ProduceCategory",
