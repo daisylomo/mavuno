@@ -31,12 +31,22 @@ from mavuno.db.models.identity import (
     User,
     UserRole,
 )
+from mavuno.db.models.messaging import (
+    Conversation,
+    ConversationReadState,
+    Message,
+    Notification,
+    NotificationDelivery,
+    NotificationPreference,
+)
 
 __all__ = [
     "Address",
     "BuyerProfile",
     "Cart",
     "CartItem",
+    "Conversation",
+    "ConversationReadState",
     "DeviceInstallation",
     "FarmerProfile",
     "Fulfilment",
@@ -44,6 +54,10 @@ __all__ = [
     "InventoryMovement",
     "Listing",
     "ListingImage",
+    "Message",
+    "Notification",
+    "NotificationDelivery",
+    "NotificationPreference",
     "Order",
     "OrderItem",
     "OrderStatusHistory",

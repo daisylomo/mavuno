@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     bank_client_id: SecretStr | None = None
     bank_client_secret: SecretStr | None = None
     worker_poll_seconds: float = Field(default=2.0, ge=0.1, le=60)
+    notification_push_url: AnyHttpUrl | None = None
+    notification_push_api_key: SecretStr | None = None
+    notification_push_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    outbox_lease_seconds: int = Field(default=60, ge=10, le=600)
+    outbox_retry_cap_seconds: int = Field(default=900, ge=30, le=3600)
 
     @model_validator(mode="after")
     def validate_auth_keys(self) -> Settings:
@@ -72,6 +77,12 @@ class Settings(BaseSettings):
             raise ValueError("MAVUNO_AUTH_ACTIVE_KEY_ID must identify a configured signing key")
         if any(len(secret.get_secret_value()) < 32 for secret in self.auth_signing_keys.values()):
             raise ValueError("Every authentication signing key must be at least 32 characters")
+        return self
+
+    @model_validator(mode="after")
+    def validate_notification_provider(self) -> Settings:
+        if (self.notification_push_url is None) != (self.notification_push_api_key is None):
+            raise ValueError("Push provider URL and API key must be configured together")
         return self
 
     @model_validator(mode="after")
