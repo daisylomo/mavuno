@@ -60,4 +60,5 @@ jobs:
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          trivyignores: backend/conf/trivy.ignore.yaml
           exit-code: "1"

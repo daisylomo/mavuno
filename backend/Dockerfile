@@ -27,7 +27,10 @@ ENV PATH="/opt/venv/bin:${PATH}" \
 
 WORKDIR /app
 
-RUN addgroup --system --gid 10001 mavuno \
+RUN apt-get update \
+    && apt-get install --only-upgrade -y --no-install-recommends libpcre2-8-0 \
+    && rm -rf /var/lib/apt/lists/* \
+    && addgroup --system --gid 10001 mavuno \
     && adduser --system --uid 10001 --ingroup mavuno --home /nonexistent --no-create-home mavuno
 
 COPY --from=builder /opt/venv /opt/venv

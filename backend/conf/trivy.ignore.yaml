@@ -1,0 +1,15 @@
+vulnerabilities:
+  # The official Python base image's embedded third-party build SBOM lists these
+  # packages even though neither package exists in the runtime filesystem.
+  # Keep the exceptions scoped to the exact phantom package versions and review
+  # them when the upstream image metadata is refreshed.
+  - id: GHSA-6v7p-g79w-8964
+    purls:
+      - pkg:pypi/msgpack@1.1.2
+    expired_at: 2026-12-31
+    statement: msgpack is present only in the upstream build SBOM, not in the runtime image.
+  - id: CVE-2025-47273
+    purls:
+      - pkg:pypi/setuptools@70.3.0
+    expired_at: 2026-12-31
+    statement: setuptools is present only in the upstream build SBOM, not in the runtime image.
