@@ -14,6 +14,7 @@ import {
 import { Href, useRouter } from 'expo-router';
 import { Colors } from '../../constants/theme';
 import { userService } from '../../services/user-service';
+import { PASSWORD_MIN_LENGTH } from '../../services/auth-api';
 
 type RegisterRole = 'customer' | 'farmer';
 
@@ -69,8 +70,8 @@ export default function SignUpScreen() {
       setErrorMessage('Please provide an email address or phone number');
       return;
     }
-    if (!password || password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters long');
+    if (!password || password.length < PASSWORD_MIN_LENGTH) {
+      setErrorMessage(`Password must be at least ${PASSWORD_MIN_LENGTH} characters long`);
       return;
     }
 
@@ -240,7 +241,7 @@ export default function SignUpScreen() {
             <Text style={styles.label}>Password</Text>
             <TextInput
               style={styles.input}
-              placeholder="At least 6 characters"
+              placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`}
               placeholderTextColor="#9CA3AF"
               value={password}
               onChangeText={setPassword}

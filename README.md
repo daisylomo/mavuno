@@ -23,6 +23,81 @@ In the output, you'll find options to open the app in a
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 - [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
+### Customer marketplace
+
+From `frontend`, run `npm run web`, then open `http://localhost:8081/customer`.
+With no API URL configured, the page shows sample data. Every step of the
+purchase flow is labelled as a demo ("Place demo order", "Demo total"), and its
+sample products, cart and checkout are local only: no order is created and no
+payment is taken. Sample quantities and units match the backend listing units
+(`kg`, `g`, `crate`, `piece`, `bunch`, `bag`): avocados are priced individually
+and a jar of honey is counted as one `piece`. The sample product photographs are bundled illustrations,
+not photographs of real farmers' stock. Their [CC0 sources on Wikimedia
+Commons](https://commons.wikimedia.org/) are:
+[tomatoes](https://commons.wikimedia.org/wiki/File:Tomatoes.jpg),
+[spinach](https://commons.wikimedia.org/wiki/File:Spinach_Plant_Nourishment_Meal_Fresh_Healthy_Bio.jpg),
+[mangoes](https://commons.wikimedia.org/wiki/File:Mangoes_-_Massachusetts.jpg),
+[bananas](https://commons.wikimedia.org/wiki/File:Bananas_-_Massachusetts.jpg),
+[carrots](https://commons.wikimedia.org/wiki/File:Carrots_-_San_Francisco,_CA.jpg),
+[avocados](https://commons.wikimedia.org/wiki/File:Avocados_Fruit.jpg),
+[potatoes](https://commons.wikimedia.org/wiki/File:Potatoes_-_Massachusetts.jpg), and
+[honey](https://commons.wikimedia.org/wiki/File:Small_Honey_Jar_with_Honeycomb.jpg).
+
+To browse **real active listings**, start the [backend](./backend/README.md)
+with MySQL configured and migrations applied. Restart Expo with the public
+API URL set (from PowerShell in `frontend`):
+
+```powershell
+$env:EXPO_PUBLIC_MAVUNO_API_URL = "http://127.0.0.1:8000/api/v1"
+npm run web
+```
+
+Set `MAVUNO_CORS_ORIGINS='["http://localhost:8081"]'` in the backend
+environment for the web preview. For a phone, use your computer's LAN IP in
+the public API URL (not `127.0.0.1`); permit that address through the firewall.
+The URL is baked into the Expo client, so restart Expo after changing it.
+Only public listing and category reads are connected; there is **no live cart,
+checkout or payment**. Network and malformed-response errors are displayed
+with retry controls, never replaced with sample products.
+
+The backend provides image *object keys*, not public image URLs. Until public
+image hosting exists, live cards explicitly show "Photo unavailable".
+If listing images are published at a public base URL, set
+`EXPO_PUBLIC_MAVUNO_IMAGE_BASE_URL` to that prefix before starting Expo.
+The client appends each listing's encoded relative object key; do not use this
+setting for a private bucket or a URL requiring secrets.
+
+Check the frontend API adapter from `frontend` with
+`node --experimental-strip-types --test tests/customer-catalog-api.test.mjs tests/auth-api.test.mjs`.
+
+### Sign up and log in
+
+`/` redirects to `/auth/login`. After signing in, the account's role decides the
+destination: farmers land on `/farmer`, admins on `/admin`, and everyone else on
+the customer marketplace.
+
+Like the marketplace, auth has two modes. Without `EXPO_PUBLIC_MAVUNO_API_URL`
+the screens keep working against on-device storage so the app can be demoed with
+no server. With the URL set, `src/services/auth-api.ts` calls the real
+`/auth/register`, `/auth/login`, `/auth/me` and `/auth/logout` endpoints, and
+these backend rules apply:
+
+- **Passwords must be at least 10 characters.** The signup screen enforces the
+  same minimum so the form fails fast instead of being rejected by the server.
+- **The app's `customer` role is the backend's `buyer` role.** Registration sends
+  `buyer`, and the roles list returned by the API is mapped back to a single app
+  role (`admin` wins, then `farmer`, otherwise `customer`).
+- **Registering needs an email address or a phone number**, and blank values are
+  omitted rather than sent as empty strings. Phone numbers are normalised to
+  E.164 (`0712345678` becomes `+254712345678`).
+- **The backend stores no display name or location.** Those are cached on the
+  device and re-attached at sign-in, so the greeting still shows a real name.
+- Signing in stores the access and refresh tokens, never the password. Logging
+  out revokes the refresh token before clearing the local session.
+
+There is no `admin` option when registering, because the backend only accepts
+`buyer` and `farmer`.
+
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
 ## Get a fresh project

@@ -1,5 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import {
+  authApi,
+  isBackendConfigured,
+  toAppRole,
+  type BackendUser,
+} from './auth-api';
+
 export interface AppUser {
   id: string;
   name: string;
@@ -13,6 +20,12 @@ export interface AppUser {
 
 const USERS_STORAGE_KEY = '@mavuno_registered_users';
 const CURRENT_USER_KEY = '@mavuno_current_user';
+const TOKENS_STORAGE_KEY = '@mavuno_auth_tokens';
+
+interface StoredTokens {
+  accessToken: string;
+  refreshToken: string;
+}
 
 /**
  * Normalizes Kenyan and international phone numbers into canonical E.164 format.
@@ -77,6 +90,26 @@ function isRealName(name: string): boolean {
   return !/^\+?\d+$/.test(clean);
 }
 
+/**
+ * Builds an AppUser from a backend account. The backend stores no display name or
+ * location, so those come from the locally cached profile when available.
+ */
+function fromBackendUser(user: BackendUser, cached?: Partial<AppUser>): AppUser {
+  const email = user.email ?? cached?.email ?? '';
+  const phone = user.phone_e164 ?? cached?.phone ?? '';
+  const fallbackName = email ? email.split('@')[0] : phone;
+
+  return {
+    id: user.id,
+    name: cached?.name && isRealName(cached.name) ? cached.name : fallbackName,
+    email,
+    phone,
+    role: toAppRole(user.roles),
+    location: cached?.location ?? 'Nairobi, Kenya',
+    createdAt: cached?.createdAt ?? new Date().toISOString(),
+  };
+}
+
 export const userService = {
   /** Get all registered users with deduplication */
   async getUsers(): Promise<AppUser[]> {
@@ -97,6 +130,21 @@ export const userService = {
     role: 'farmer' | 'customer';
     location?: string;
   }): Promise<AppUser> {
+    if (isBackendConfigured()) {
+      const tokens = await authApi.register({
+        email: params.email,
+        phone: normalizePhone(params.phone) || params.phone,
+        password: params.password ?? '',
+        role: params.role,
+      });
+      const user = fromBackendUser(tokens.user, {
+        name: params.name.trim(),
+        location: params.location,
+      });
+      await this.cacheProfile(user);
+      return user;
+    }
+
     const users = await this.getUsers();
     const cleanEmail = params.email ? params.email.trim().toLowerCase() : '';
     const cleanPhone = normalizePhone(params.phone);
@@ -149,6 +197,23 @@ export const userService = {
 
   /** Authenticate and store as current active session */
   async login(identifier: string, password?: string): Promise<AppUser> {
+    if (isBackendConfigured()) {
+      const tokens = await authApi.login(identifier, password ?? '');
+      const cached = (await this.getUsers()).find((u) => u.id === tokens.user.id);
+      const user = fromBackendUser(tokens.user, cached);
+
+      await AsyncStorage.setItem(
+        TOKENS_STORAGE_KEY,
+        JSON.stringify({
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+        } satisfies StoredTokens)
+      );
+      await this.cacheProfile(user);
+      await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+      return user;
+    }
+
     const users = await this.getUsers();
     const cleanId = identifier.trim();
 
@@ -229,7 +294,42 @@ export const userService = {
 
   /** Clear current session on logout */
   async logout(): Promise<void> {
-    await AsyncStorage.removeItem(CURRENT_USER_KEY);
+    const tokens = await this.getTokens();
+    if (tokens) {
+      try {
+        await authApi.logout(tokens.accessToken, tokens.refreshToken);
+      } catch {
+        // The local session is cleared below even if the server call fails.
+      }
+    }
+    await AsyncStorage.multiRemove([CURRENT_USER_KEY, TOKENS_STORAGE_KEY]);
+  },
+
+  /** Stored bearer tokens for the signed-in account, if any. */
+  async getTokens(): Promise<StoredTokens | null> {
+    try {
+      const data = await AsyncStorage.getItem(TOKENS_STORAGE_KEY);
+      if (!data) return null;
+      const parsed = JSON.parse(data);
+      if (typeof parsed?.accessToken !== 'string' || typeof parsed?.refreshToken !== 'string') {
+        return null;
+      }
+      return { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken };
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Saves display details the backend does not store, so the name and location
+   * survive a sign-out. Passwords are never cached for backend accounts.
+   */
+  async cacheProfile(user: AppUser): Promise<void> {
+    const users = await this.getUsers();
+    const existingIndex = users.findIndex((u) => u.id === user.id);
+    const merged = existingIndex === -1 ? user : { ...users[existingIndex], ...user };
+    const next = existingIndex === -1 ? [...users, merged] : users.map((u, i) => (i === existingIndex ? merged : u));
+    await AsyncStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(next));
   },
 };
 
