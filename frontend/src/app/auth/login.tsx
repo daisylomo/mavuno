@@ -1,82 +1,258 @@
-import { View, Text, TextInput, StyleSheet, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Href, useRouter } from 'expo-router';
 import { Colors } from '../../constants/theme';
+import { userService } from '../../services/user-service';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const handleLogin = () => {
-    // Mock authentication and role fetching. 
-    // In production, this data will come from your backend/database.
-    const userRole = 'farmer'; // Change to 'customer' or 'admin' to test routing
+  const handleLogin = async () => {
+    if (!identifier.trim()) {
+      setErrorMessage('Please enter your email or phone number');
+      return;
+    }
+    if (!password) {
+      setErrorMessage('Please enter your password');
+      return;
+    }
 
-    // router.replace() is used here instead of push() so the user cannot 
-    // swipe or click "back" to return to the login screen once authenticated.
-    if (userRole === 'farmer') {
-      router.replace('/farmer'); 
-    } else if (userRole === 'customer') {
-      router.replace('/customer');
-    } else if (userRole === 'admin') {
-      router.replace('/admin');
+    setErrorMessage('');
+    setLoading(true);
+
+    try {
+      const user = await userService.login(identifier.trim(), password);
+
+      if (user.role === 'farmer') {
+        router.replace('/farmer' as Href);
+      } else if (user.role === 'admin') {
+        router.replace('/admin' as Href);
+      } else {
+        router.replace('/customer' as Href);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Login failed. Please check your credentials.');
+      setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.brandTitle}>Mavuno</Text>
-      <Text style={styles.subtitle}>Welcome back. Log in to continue.</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.keyboardContainer}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled">
+        {/* Brand Header with Logo */}
+        <View style={styles.brandHeader}>
+          <View style={styles.logoCircle}>
+            <Text style={styles.logoIcon}>🌾</Text>
+          </View>
+          <Text style={styles.appName}>Mavuno</Text>
+          <Text style={styles.tagline}>Direct Farm-to-Consumer Marketplace</Text>
+        </View>
 
-      <View style={styles.formContainer}>
-        <Text style={styles.label}>Email Address</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="Enter your email" 
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
+        {/* Login Card */}
+        <View style={styles.card}>
+          <Text style={styles.title}>Welcome Back</Text>
+          <Text style={styles.subtitle}>Log in to access your dashboard</Text>
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="Enter your password" 
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+          {errorMessage ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
 
-        <Pressable 
-          style={styles.primaryButton} 
-          onPress={handleLogin} 
-        >
-          <Text style={styles.buttonText}>Log In</Text>
-        </Pressable>
-      </View>
+          {/* Identifier Input */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Email or Phone Number</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. farmer@mavuno.com or +254 712 345678"
+              placeholderTextColor="#9CA3AF"
+              value={identifier}
+              onChangeText={setIdentifier}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+          </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Don't have an account? </Text>
-        <Pressable onPress={() => router.push('/auth/signup')}>
-          <Text style={styles.linkText}>Sign Up</Text>
-        </Pressable>
-      </View>
-    </View>
+          {/* Password Input */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="••••••••"
+              placeholderTextColor="#9CA3AF"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+          </View>
+
+          {/* Submit Button */}
+          <TouchableOpacity
+            style={[styles.submitButton, loading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.8}>
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.submitButtonText}>Log In</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Switch to Register */}
+          <View style={styles.footerRow}>
+            <Text style={styles.footerText}>New to Mavuno? </Text>
+            <TouchableOpacity onPress={() => router.push('/auth/signup' as Href)}>
+              <Text style={styles.footerLink}>Create an account</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, justifyContent: 'center', padding: 24 },
-  brandTitle: { fontSize: 40, fontWeight: 'bold', color: Colors.brandGreen, textAlign: 'center', marginBottom: 8 },
-  subtitle: { fontSize: 16, color: Colors.textMuted, textAlign: 'center', marginBottom: 40 },
-  formContainer: { backgroundColor: Colors.surface, padding: 20, borderRadius: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4 },
-  label: { fontSize: 14, fontWeight: '600', color: Colors.text, marginBottom: 8 },
-  input: { backgroundColor: Colors.background, borderWidth: 1, borderColor: '#E9ECEF', borderRadius: 8, padding: 14, fontSize: 16, marginBottom: 20 },
-  primaryButton: { backgroundColor: Colors.brandGreen, padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 10 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 30 },
-  footerText: { color: Colors.textMuted, fontSize: 15 },
-  linkText: { color: Colors.brandGreen, fontSize: 15, fontWeight: 'bold' },
+  keyboardContainer: {
+    flex: 1,
+    backgroundColor: '#F7FAF7',
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  brandHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  logoCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#E8F5E9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: '#C8E6C9',
+  },
+  logoIcon: {
+    fontSize: 32,
+  },
+  appName: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1B5E20',
+    letterSpacing: 0.5,
+  },
+  tagline: {
+    fontSize: 14,
+    color: '#4B5563',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: '#991B1B',
+    fontSize: 13,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#111827',
+  },
+  submitButton: {
+    backgroundColor: Colors.brandGreen,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  footerText: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  footerLink: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.brandGreen,
+  },
 });
