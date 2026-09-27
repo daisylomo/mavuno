@@ -1,7 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { apiBaseUrl, imageBaseUrl, type ListingUnit } from '@/components/customer-catalog-api';
 import CustomerLiveCatalog from '@/components/customer-live-catalog';
+import { farmerListingsToProducts } from '@/components/farmer-listings-bridge';
+import { farmerService } from '@/services/farmer-service';
 import {
   Modal,
   Pressable,
@@ -23,7 +26,7 @@ type Product = {
   farmer: string;
   description: string;
   stock: number;
-  image: number;
+  image: number | { uri: string } | null;
 };
 type Screen = 'browse' | 'cart' | 'checkout' | 'complete';
 
@@ -85,16 +88,43 @@ function CustomerDemo() {
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('All');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [farmerProducts, setFarmerProducts] = useState<Product[]>([]);
+  const [loadingFarmerProducts, setLoadingFarmerProducts] = useState(true);
+
+  // Reload whenever the screen regains focus, so a listing just added on the
+  // farmer screen shows up here straight away.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      setLoadingFarmerProducts(true);
+      farmerService
+        .getListings()
+        .then((listings) => {
+          if (active) setFarmerProducts(farmerListingsToProducts(listings));
+        })
+        .catch(() => {
+          if (active) setFarmerProducts([]);
+        })
+        .finally(() => {
+          if (active) setLoadingFarmerProducts(false);
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  const allProducts = useMemo(() => [...farmerProducts, ...PRODUCTS], [farmerProducts]);
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return PRODUCTS.filter(
+    return allProducts.filter(
       (product) =>
         (category === 'All' || product.category === category) &&
         (!query || `${product.name} ${product.farmer} ${product.category}`.toLowerCase().includes(query)),
     );
-  }, [category, search]);
-  const cartItems = PRODUCTS.filter((product) => (cart[product.id] ?? 0) > 0);
+  }, [allProducts, category, search]);
+  const cartItems = allProducts.filter((product) => (cart[product.id] ?? 0) > 0);
   const cartCount = cartItems.reduce((count, product) => count + cart[product.id], 0);
   const total = cartItems.reduce((sum, product) => sum + product.price * cart[product.id], 0);
 
@@ -159,7 +189,11 @@ function CustomerDemo() {
               </ScrollView>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Fresh picks</Text>
-                <Text style={styles.muted}>{filteredProducts.length} {filteredProducts.length === 1 ? 'product' : 'products'}</Text>
+                <Text style={styles.muted}>
+                  {loadingFarmerProducts
+                    ? 'Loading listings...'
+                    : `${filteredProducts.length} ${filteredProducts.length === 1 ? 'product' : 'products'}`}
+                </Text>
               </View>
               {filteredProducts.length === 0 ? (
                 <View style={styles.emptyState}>
@@ -183,13 +217,24 @@ function CustomerDemo() {
                         <Text style={styles.price}>{formatPrice(product.price)} <Text style={styles.unit}>/ {product.unit}</Text></Text>
                         <Pressable
                           accessibilityRole="button"
-                          accessibilityLabel={`Add ${product.name} to cart`}
+                          accessibilityLabel={
+                            (cart[product.id] ?? 0) > 0
+                              ? `Add another ${product.name}, ${cart[product.id]} in cart`
+                              : `Add ${product.name} to cart`
+                          }
                           accessibilityState={{ disabled: (cart[product.id] ?? 0) >= product.stock }}
                           disabled={(cart[product.id] ?? 0) >= product.stock}
                           onPress={() => changeQuantity(product, 1)}
-                          style={styles.addButton}
+                          style={[styles.addButton, (cart[product.id] ?? 0) > 0 && styles.addButtonActive]}
                         >
-                          <Text style={styles.addButtonText}>+ Add</Text>
+                          <Text
+                            style={[
+                              styles.addButtonText,
+                              (cart[product.id] ?? 0) > 0 && styles.addButtonTextActive,
+                            ]}
+                          >
+                            {(cart[product.id] ?? 0) > 0 ? `In cart (${cart[product.id]})` : '+ Add'}
+                          </Text>
                         </Pressable>
                       </View>
                     </View>
@@ -234,7 +279,7 @@ function CustomerDemo() {
                     <Text style={styles.summaryLabel}>Subtotal</Text>
                     <Text style={styles.summaryAmount}>{formatPrice(total)}</Text>
                   </View>
-                  <Text style={styles.note}>Demo prices only. Delivery and payment are not available.</Text>
+                  <Text style={styles.note}>Demo checkout. Delivery and payment are not available.</Text>
                   <View style={styles.actions}>
                     <ActionButton label="Continue shopping" secondary onPress={() => setScreen('browse')} />
                     <ActionButton label="Review demo order" onPress={() => setScreen('checkout')} />
@@ -338,7 +383,9 @@ const styles = StyleSheet.create({
   price: { fontSize: 15, fontWeight: '800', color: '#153C59' },
   unit: { color: '#668096', fontWeight: '400', fontSize: 12 },
   addButton: { backgroundColor: '#E1F1FE', borderRadius: 12, paddingHorizontal: 15, paddingVertical: 10 },
+  addButtonActive: { backgroundColor: '#1164A7' },
   addButtonText: { color: '#1164A7', fontWeight: '800' },
+  addButtonTextActive: { color: '#fff' },
   pageTitle: { color: '#17364D', fontSize: 28, fontWeight: '800', marginBottom: 8 },
   emptyState: { alignItems: 'center', gap: 16, paddingVertical: 80 },
   cartRow: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 14, flexWrap: 'wrap' },

@@ -43,6 +43,16 @@ Commons](https://commons.wikimedia.org/) are:
 [potatoes](https://commons.wikimedia.org/wiki/File:Potatoes_-_Massachusetts.jpg), and
 [honey](https://commons.wikimedia.org/wiki/File:Small_Honey_Jar_with_Honeycomb.jpg).
 
+Anything a farmer lists on the farmer screen appears at the top of the customer
+marketplace, priced by that farmer rather than by the sample data. The two
+screens share the same on-device storage, so no server is needed: add a listing
+under **Farmer → New listing**, then return to `/customer` to see it. Only
+listings that are `active` or `low_stock` and have both a price and stock above
+zero are offered. The farmer form has more categories than the customer filters,
+so `Grains & Cereals` and `Dairy & Poultry` are shown under **Pantry**, and
+`Tubers & Roots` under **Vegetables**. Farmer listings have no photograph yet
+(see the image upload note below), so they show a plain placeholder.
+
 To browse **real active listings**, start the [backend](./backend/README.md)
 with MySQL configured and migrations applied. Restart Expo with the public
 API URL set (from PowerShell in `frontend`):
