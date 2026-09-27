@@ -59,6 +59,13 @@ leafy-greens picture, and "Ndizi" on the bananas. When nothing matches, the
 listing falls back to a picture for its category. These are illustrations, not
 the farmer's actual harvest, and every such card says so underneath the image.
 
+The cart survives a page refresh: it is saved on the device, so a shopper who
+reloads mid-shop keeps their basket. It is trimmed against the catalogue once
+that has loaded, so a quantity larger than the stock on offer is brought down,
+and a product the farmer has since sold out of or withdrawn drops out. Placing
+a demo order clears the saved cart. The cart is stored on the device only and
+is not sent anywhere.
+
 To browse **real active listings**, start the [backend](./backend/README.md)
 with MySQL configured and migrations applied. Restart Expo with the public
 API URL set (from PowerShell in `frontend`):

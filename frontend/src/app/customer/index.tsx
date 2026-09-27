@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { apiBaseUrl, imageBaseUrl, type ListingUnit } from '@/components/customer-catalog-api';
+import { clampCartToStock, loadCart, saveCart, type Cart } from '@/components/customer-cart-storage';
 import CustomerLiveCatalog from '@/components/customer-live-catalog';
 import { farmerListingsToProducts, type ProduceImageKey } from '@/components/farmer-listings-bridge';
 import { farmerService } from '@/services/farmer-service';
@@ -102,9 +103,29 @@ function CustomerDemo() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('All');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [cart, setCart] = useState<Record<string, number>>({});
+  const [cart, setCart] = useState<Cart>({});
   const [farmerProducts, setFarmerProducts] = useState<Product[]>([]);
   const [loadingFarmerProducts, setLoadingFarmerProducts] = useState(true);
+  // Until the stored cart has been read back, saving would write an empty cart
+  // over the shopper's real one.
+  const [cartLoaded, setCartLoaded] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    loadCart().then((stored) => {
+      if (!active) return;
+      setCart(stored);
+      setCartLoaded(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cartLoaded) return;
+    void saveCart(cart);
+  }, [cart, cartLoaded]);
 
   // Reload whenever the screen regains focus, so a listing just added on the
   // farmer screen shows up here straight away.
@@ -136,6 +157,22 @@ function CustomerDemo() {
   );
 
   const allProducts = useMemo(() => [...farmerProducts, ...PRODUCTS], [farmerProducts]);
+
+  // A saved cart can outlive the stock behind it, so trim it once the catalogue
+  // is in: a farmer may have sold out, lowered the quantity, or withdrawn the
+  // listing since. Waiting for the catalogue matters — trimming against a
+  // half-loaded one would throw away the farmer's own lines.
+  useEffect(() => {
+    if (!cartLoaded || loadingFarmerProducts) return;
+    const stockById = Object.fromEntries(allProducts.map((product) => [product.id, product.stock]));
+    setCart((current) => {
+      const clamped = clampCartToStock(current, stockById);
+      const unchanged =
+        Object.keys(clamped).length === Object.keys(current).length &&
+        Object.entries(clamped).every(([id, quantity]) => current[id] === quantity);
+      return unchanged ? current : clamped;
+    });
+  }, [allProducts, cartLoaded, loadingFarmerProducts]);
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLowerCase();
