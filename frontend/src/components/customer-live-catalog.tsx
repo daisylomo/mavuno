@@ -20,6 +20,7 @@ import {
   type Category,
   type Listing,
 } from '@/components/customer-catalog-api';
+import { formatQuantity, secondaryName } from '@/components/customer-live-catalog-format';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'The catalog request failed. Try again.';
@@ -224,9 +225,11 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
                   <View style={styles.cardInfo}>
                     <Text style={styles.categoryLabel}>{listing.category_slug.replace(/-/g, ' ').toUpperCase()}</Text>
                     <Text style={styles.productName}>{listing.title}</Text>
-                    <Text style={styles.muted}>{listing.product_name}</Text>
+                    {secondaryName(listing.title, listing.product_name) && (
+                      <Text style={styles.muted}>{listing.product_name}</Text>
+                    )}
                     <Price listing={listing} />
-                    <Text style={styles.muted}>{listing.available_quantity} {listing.quantity_unit} available</Text>
+                    <Text style={styles.muted}>{formatQuantity(listing.available_quantity)} {listing.quantity_unit} available</Text>
                   </View>
                 </Pressable>
               ))}
@@ -267,10 +270,12 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
                 <Photo listing={selected} style={styles.detailPhoto} />
                 <Text style={styles.categoryLabel}>{selected.category_slug.replace(/-/g, ' ').toUpperCase()}</Text>
                 <Text style={styles.heroTitle}>{selected.title}</Text>
-                <Text style={styles.muted}>{selected.product_name}</Text>
+                {secondaryName(selected.title, selected.product_name) && (
+                  <Text style={styles.muted}>{selected.product_name}</Text>
+                )}
                 <Text style={styles.description}>{selected.description || 'No description provided.'}</Text>
                 <Price listing={selected} />
-                <Text style={styles.muted}>{selected.available_quantity} {selected.quantity_unit} available</Text>
+                <Text style={styles.muted}>{formatQuantity(selected.available_quantity)} {selected.quantity_unit} available</Text>
                 <Text style={styles.disclaimer}>Ordering this listing will be available after buyer sign-in and cart integration.</Text>
               </>
             ) : (

@@ -90,8 +90,8 @@ If listing images are published at a public base URL, set
 The client appends each listing's encoded relative object key; do not use this
 setting for a private bucket or a URL requiring secrets.
 
-Check the frontend API adapter from `frontend` with
-`node --experimental-strip-types --test tests/customer-catalog-api.test.mjs tests/auth-api.test.mjs`.
+Check the frontend from `frontend` with
+`node --experimental-strip-types --test tests/customer-catalog-api.test.mjs tests/auth-api.test.mjs tests/farmer-listings-bridge.test.mjs tests/customer-cart-storage.test.mjs tests/customer-live-catalog-format.test.mjs`.
 
 ### Sign up and log in
 
