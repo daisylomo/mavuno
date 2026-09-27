@@ -8,6 +8,22 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
+  const handleLogin = () => {
+    // Mock authentication and role fetching. 
+    // In production, this data will come from your backend/database.
+    const userRole = 'farmer'; // Change to 'customer' or 'admin' to test routing
+
+    // router.replace() is used here instead of push() so the user cannot 
+    // swipe or click "back" to return to the login screen once authenticated.
+    if (userRole === 'farmer') {
+      router.replace('/farmer'); 
+    } else if (userRole === 'customer') {
+      router.replace('/customer');
+    } else if (userRole === 'admin') {
+      router.replace('/admin');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.brandTitle}>Mavuno</Text>
@@ -35,7 +51,7 @@ export default function LoginScreen() {
 
         <Pressable 
           style={styles.primaryButton} 
-          onPress={() => router.replace('/')} 
+          onPress={handleLogin} 
         >
           <Text style={styles.buttonText}>Log In</Text>
         </Pressable>
