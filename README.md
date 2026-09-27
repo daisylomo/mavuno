@@ -79,8 +79,14 @@ Set `MAVUNO_CORS_ORIGINS='["http://localhost:8081"]'` in the backend
 environment for the web preview. For a phone, use your computer's LAN IP in
 the public API URL (not `127.0.0.1`); permit that address through the firewall.
 The URL is baked into the Expo client, so restart Expo after changing it.
-Only public listing and category reads are connected; there is **no live cart,
-checkout or payment**. Network and malformed-response errors are displayed
+Only public listing and category reads are connected; live mode is **browse
+only, with no cart, checkout or payment**. This is a deliberate scope choice,
+not a backend gap: the API does provide `/cart`, `/cart/items/{listing_id}` and
+`POST /orders`. Each of those requires a signed-in user, so connecting them
+means sending the stored access token with catalog requests, refreshing it when
+it expires, creating a delivery address through `POST /profiles/addresses`, and
+sending an `Idempotency-Key` header on checkout. Until then the full purchase
+journey lives in demo mode. Network and malformed-response errors are displayed
 with retry controls, never replaced with sample products.
 
 The backend provides image *object keys*, not public image URLs. Until public
