@@ -50,8 +50,14 @@ under **Farmer → New listing**, then return to `/customer` to see it. Only
 listings that are `active` or `low_stock` and have both a price and stock above
 zero are offered. The farmer form has more categories than the customer filters,
 so `Grains & Cereals` and `Dairy & Poultry` are shown under **Pantry**, and
-`Tubers & Roots` under **Vegetables**. Farmer listings have no photograph yet
-(see the image upload note below), so they show a plain placeholder.
+`Tubers & Roots` under **Vegetables**.
+
+Farmers cannot attach their own photograph yet, so each listing borrows the
+closest of the bundled CC0 pictures, matched on what the farmer typed in the
+title — English or Swahili, so both "Sukuma Wiki" and "Spinach" land on the
+leafy-greens picture, and "Ndizi" on the bananas. When nothing matches, the
+listing falls back to a picture for its category. These are illustrations, not
+the farmer's actual harvest, and every such card says so underneath the image.
 
 To browse **real active listings**, start the [backend](./backend/README.md)
 with MySQL configured and migrations applied. Restart Expo with the public

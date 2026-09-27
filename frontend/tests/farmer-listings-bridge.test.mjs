@@ -5,6 +5,7 @@ import {
   DEFAULT_FARMER_LABEL,
   farmerListingToProduct,
   farmerListingsToProducts,
+  pickImageKey,
 } from '../src/components/farmer-listings-bridge.ts';
 
 function listing(overrides = {}) {
@@ -38,12 +39,35 @@ test('maps farmer-only categories onto the customer filters', () => {
   assert.equal(farmerListingToProduct(listing({ category: 'Fruits' })).category, 'Fruits');
 });
 
-test('carries an image url through, and tolerates listings without one', () => {
-  assert.deepEqual(
-    farmerListingToProduct(listing({ imageUrl: 'https://example.test/kale.jpg' })).image,
-    { uri: 'https://example.test/kale.jpg' },
-  );
-  assert.equal(farmerListingToProduct(listing()).image, null);
+test('carries a farmer photograph through, and tolerates listings without one', () => {
+  const own = farmerListingToProduct(listing({ imageUrl: 'https://example.test/kale.jpg' }));
+  assert.equal(own.imageUri, 'https://example.test/kale.jpg');
+  assert.equal(own.illustrated, false, 'a real photograph is not an illustration');
+
+  const withoutPhoto = farmerListingToProduct(listing());
+  assert.equal(withoutPhoto.imageUri, null);
+  assert.equal(withoutPhoto.illustrated, true);
+  assert.ok(withoutPhoto.imageKey, 'still gets an illustration to show');
+});
+
+test('matches an illustration to what the farmer typed', () => {
+  assert.equal(pickImageKey('Sukuma Wiki', 'Vegetables'), 'spinach');
+  assert.equal(pickImageKey('Hass Avocados', 'Fruits'), 'avocados');
+  assert.equal(pickImageKey('Nyanya', 'Vegetables'), 'tomatoes');
+  assert.equal(pickImageKey('Ndizi', 'Fruits'), 'bananas');
+  assert.equal(pickImageKey('Viazi', 'Vegetables'), 'potatoes');
+  assert.equal(pickImageKey('Mahindi', 'Pantry'), 'honey');
+});
+
+test('matching ignores capitals and surrounding words', () => {
+  assert.equal(pickImageKey('ORGANIC HASS AVOCADOS, GRADE 1', 'Fruits'), 'avocados');
+  assert.equal(pickImageKey('  Fresh Sukuma Wiki bundles  ', 'Vegetables'), 'spinach');
+});
+
+test('falls back to a category picture when nothing matches', () => {
+  assert.equal(pickImageKey('Xyz Produce', 'Vegetables'), 'spinach');
+  assert.equal(pickImageKey('Xyz Produce', 'Fruits'), 'mangoes');
+  assert.equal(pickImageKey('Xyz Produce', 'Pantry'), 'honey');
 });
 
 test('labels the seller, with an override available', () => {

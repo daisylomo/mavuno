@@ -3,7 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import { Image } from 'expo-image';
 import { apiBaseUrl, imageBaseUrl, type ListingUnit } from '@/components/customer-catalog-api';
 import CustomerLiveCatalog from '@/components/customer-live-catalog';
-import { farmerListingsToProducts } from '@/components/farmer-listings-bridge';
+import { farmerListingsToProducts, type ProduceImageKey } from '@/components/farmer-listings-bridge';
 import { farmerService } from '@/services/farmer-service';
 import {
   Modal,
@@ -27,6 +27,7 @@ type Product = {
   description: string;
   stock: number;
   image: number | { uri: string } | null;
+  illustrated?: boolean;
 };
 type Screen = 'browse' | 'cart' | 'checkout' | 'complete';
 
@@ -42,6 +43,20 @@ const PRODUCTS: Product[] = [
 ];
 
 const CATEGORIES: Array<'All' | Category> = ['All', 'Vegetables', 'Fruits', 'Pantry'];
+
+// Farmers cannot attach their own photograph yet, so their listings borrow the
+// closest of these bundled CC0 pictures. They are illustrations, not the
+// farmer's actual harvest, and each card says so.
+const PRODUCE_IMAGES: Record<ProduceImageKey, number> = {
+  tomatoes: require('@/assets/products/tomatoes.jpg'),
+  spinach: require('@/assets/products/spinach.jpg'),
+  mangoes: require('@/assets/products/mangoes.jpg'),
+  bananas: require('@/assets/products/bananas.jpg'),
+  carrots: require('@/assets/products/carrots.jpg'),
+  avocados: require('@/assets/products/avocados.jpg'),
+  potatoes: require('@/assets/products/potatoes.jpg'),
+  honey: require('@/assets/products/honey.jpg'),
+};
 const formatPrice = (amount: number) => `KES ${amount.toLocaleString('en-KE')}`;
 
 type ActionButtonProps = {
@@ -100,7 +115,13 @@ function CustomerDemo() {
       farmerService
         .getListings()
         .then((listings) => {
-          if (active) setFarmerProducts(farmerListingsToProducts(listings));
+          if (!active) return;
+          setFarmerProducts(
+            farmerListingsToProducts(listings).map((item) => ({
+              ...item,
+              image: item.imageUri ? { uri: item.imageUri } : PRODUCE_IMAGES[item.imageKey],
+            })),
+          );
         })
         .catch(() => {
           if (active) setFarmerProducts([]);
@@ -207,6 +228,9 @@ function CustomerDemo() {
                     <View key={product.id} style={[styles.productCard, { width: width >= 680 ? '48%' : '100%' }]}>
                       <Pressable accessibilityRole="button" accessibilityLabel={`View ${product.name} details`} onPress={() => setSelectedProduct(product)}>
                         <Image source={product.image} style={styles.productImage} contentFit="cover" accessibilityLabel={product.name} />
+                        {product.illustrated && (
+                          <Text style={styles.illustrationNote}>Stock photo, not this farmer&apos;s produce</Text>
+                        )}
                         <View style={styles.productInfo}>
                           <Text style={styles.productCategory}>{product.category.toUpperCase()}</Text>
                           <Text style={styles.productName}>{product.name}</Text>
@@ -376,6 +400,7 @@ const styles = StyleSheet.create({
   productGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 16 },
   productCard: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#E5EDF3' },
   productImage: { width: '100%', height: 170, backgroundColor: '#E8EFF4' },
+  illustrationNote: { color: '#71869A', fontSize: 11, paddingHorizontal: 18, paddingTop: 8 },
   productInfo: { paddingHorizontal: 18, paddingTop: 18 },
   productCategory: { color: '#27865B', letterSpacing: 1.4, fontSize: 11, fontWeight: '800', marginBottom: 5 },
   productName: { fontSize: 18, fontWeight: '700', color: '#17364D', marginBottom: 5 },
