@@ -2,11 +2,12 @@ import { Stack, useRouter } from 'expo-router';
 import { Pressable, Text } from 'react-native';
 import React from 'react';
 import { Colors } from '../../constants/theme';
+import RoleGate from '../../components/role-gate';
 
 export default function CustomerLayout() {
   const router = useRouter();
 
-  return (
+  return <RoleGate allowedRoles={['customer']}>
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: Colors.brandGreen },
@@ -26,5 +27,5 @@ export default function CustomerLayout() {
         }} 
       />
     </Stack>
-  );
+  </RoleGate>;
 }

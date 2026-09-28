@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import React from 'react';
 import { Colors } from '../../constants/theme';
 import { userService } from '../../services/user-service';
+import RoleGate from '../../components/role-gate';
 
 export default function FarmerLayout() {
   const router = useRouter();
@@ -12,7 +13,7 @@ export default function FarmerLayout() {
     router.replace('/auth/login' as Href);
   };
 
-  return (
+  return <RoleGate allowedRoles={['farmer']}>
     <Stack
       screenOptions={{
         headerStyle: { backgroundColor: Colors.brandGreen },
@@ -69,5 +70,5 @@ export default function FarmerLayout() {
         }}
       />
     </Stack>
-  );
+  </RoleGate>;
 }
