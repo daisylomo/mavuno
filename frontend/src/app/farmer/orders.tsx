@@ -15,6 +15,7 @@ import { isBackendConfigured } from '@/services/auth-api';
 export default function FarmerOrdersScreen() {
   const [orders, setOrders] = useState<FarmerOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'pending' | 'accepted' | 'completed'>('all');
 
   const loadOrders = async () => {
@@ -22,6 +23,9 @@ export default function FarmerOrdersScreen() {
     try {
       const data = await farmerService.getOrders();
       setOrders(data);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not load orders.');
     } finally {
       setLoading(false);
     }
@@ -36,20 +40,36 @@ export default function FarmerOrdersScreen() {
     await loadOrders();
   };
 
+  const handleAdvance = async (order: FarmerOrder) => {
+    try {
+      await farmerService.advanceFulfilment(order);
+      await loadOrders();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not update delivery.');
+    }
+  };
+
   const filteredOrders = orders.filter((o) => {
     if (selectedFilter === 'all') return true;
+    if (selectedFilter === 'accepted' && isBackendConfigured()) {
+      return ['accepted', 'ready_for_pickup', 'dispatched'].includes(o.status);
+    }
     return o.status === selectedFilter;
   });
 
-  const getStatusBadge = (status: OrderStatus) => {
+  const getStatusBadge = (order: FarmerOrder) => {
+    const status = order.status;
     switch (status) {
       case 'pending':
-        return { bg: '#FEF3C7', text: '#92400E', label: isBackendConfigured() ? 'Paid — awaiting delivery plan' : 'Pending Approval' };
+        return { bg: '#FEF3C7', text: '#92400E', label: isBackendConfigured()
+          ? order.fulfilmentStatus === 'pending' ? 'Delivery plan received' : 'Paid — awaiting delivery plan'
+          : 'Pending Approval' };
       case 'accepted':
-        return { bg: '#DBEAFE', text: '#1E40AF', label: isBackendConfigured() ? 'Delivery in progress' : 'Order Accepted' };
+        return { bg: '#DBEAFE', text: '#1E40AF', label: isBackendConfigured() ? 'Delivery scheduled' : 'Order Accepted' };
       case 'ready_for_pickup':
+        return { bg: '#E0E7FF', text: '#3730A3', label: 'Ready for handover' };
       case 'dispatched':
-        return { bg: '#E0E7FF', text: '#3730A3', label: 'Dispatched' };
+        return { bg: '#E0E7FF', text: '#3730A3', label: isBackendConfigured() ? 'In transit' : 'Dispatched' };
       case 'completed':
         return { bg: '#DCFCE7', text: '#166534', label: 'Completed' };
       case 'cancelled':
@@ -58,7 +78,7 @@ export default function FarmerOrdersScreen() {
   };
 
   const renderOrderItem = ({ item }: { item: FarmerOrder }) => {
-    const badge = getStatusBadge(item.status);
+    const badge = getStatusBadge(item);
 
     return (
       <View style={styles.orderCard}>
@@ -101,7 +121,7 @@ export default function FarmerOrdersScreen() {
             <Text style={styles.paymentMethod}>Payment: {item.paymentMethod}</Text>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.totalLabel}>Total Payout</Text>
+            <Text style={styles.totalLabel}>{isBackendConfigured() ? 'Your items subtotal' : 'Total Payout'}</Text>
             <Text style={styles.totalAmount}>KSh {item.totalAmount.toLocaleString()}</Text>
           </View>
         </View>
@@ -139,6 +159,17 @@ export default function FarmerOrdersScreen() {
             </TouchableOpacity>
           )}
         </View>}
+        {isBackendConfigured() && (['pending', 'scheduled'].includes(item.fulfilmentStatus ?? '') ||
+          (item.fulfilmentStatus === 'ready_for_handover' && item.fulfilmentMethod === 'delivery')) && (
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={[styles.actionBtn, styles.acceptBtn]} onPress={() => handleAdvance(item)}>
+              <Text style={styles.acceptBtnText}>
+                {item.fulfilmentStatus === 'pending' ? 'Confirm delivery schedule'
+                  : item.fulfilmentStatus === 'scheduled' ? 'Ready for handover' : 'Mark in transit'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   };
@@ -146,6 +177,7 @@ export default function FarmerOrdersScreen() {
   return (
     <View style={styles.container}>
       {/* Filter Tabs */}
+      {error && <Text style={{ color: '#B91C1C', padding: 12 }}>{error}</Text>}
       <View style={styles.filterRow}>
         {(['all', 'pending', 'accepted', 'completed'] as const).map((filter) => {
           const isSelected = selectedFilter === filter;
@@ -159,7 +191,8 @@ export default function FarmerOrdersScreen() {
                   styles.filterChipText,
                   isSelected && styles.filterChipTextActive,
                 ]}>
-                {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                {filter === 'accepted' && isBackendConfigured()
+                  ? 'In progress' : filter.charAt(0).toUpperCase() + filter.slice(1)}
               </Text>
             </TouchableOpacity>
           );

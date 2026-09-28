@@ -42,6 +42,9 @@ export interface FarmerOrder {
   status: OrderStatus;
   paymentMethod: 'M-Pesa' | 'Cash on Delivery';
   createdAt: string;
+  fulfilmentStatus?: string;
+  fulfilmentVersion?: number;
+  fulfilmentMethod?: 'pickup' | 'delivery';
 }
 
 export interface FarmerStats {

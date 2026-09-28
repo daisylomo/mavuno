@@ -10,6 +10,11 @@ export type Cart = {
 export type Order = { id: string; status: string; total_amount: string; currency: string };
 export type Payment = { id: string; state: string; amount: string; currency: string; failure_code: string | null };
 export type Address = { id: string; label: string; line_1: string; locality: string; county: string };
+export type Fulfilment = {
+  id: string; order_id: string; method: 'pickup' | 'delivery'; status: string;
+  location_label: string; location_details: string; window_start: string;
+  window_end: string; version: number;
+};
 
 export const customerCommerce = {
   cart: () => liveRequest<Cart>('/cart'),
@@ -24,6 +29,26 @@ export const customerCommerce = {
   createAddress: (input: { line_1: string; locality: string; county: string }) =>
     liveRequest<Address>('/users/me/addresses', {
       method: 'POST', body: { label: 'Delivery', ...input, country_code: 'KE', is_default: true },
+    }),
+  fulfilment: (orderId: string) => liveRequest<Fulfilment>(`/fulfilments/${orderId}`),
+  createDeliveryPlan: (orderId: string, address: Address, day: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('Enter a delivery date as YYYY-MM-DD.');
+    const calendarDay = new Date(`${day}T00:00:00Z`);
+    const start = new Date(`${day}T09:00:00+03:00`);
+    const end = new Date(`${day}T17:00:00+03:00`);
+    if (Number.isNaN(calendarDay.valueOf()) || calendarDay.toISOString().slice(0, 10) !== day ||
+        start.valueOf() <= Date.now()) throw new Error('Choose a valid future delivery date.');
+    return liveRequest<Fulfilment>(`/fulfilments/${orderId}`, {
+      method: 'PATCH', body: {
+        method: 'delivery', location_label: address.label,
+        location_details: `${address.line_1}, ${address.locality}, ${address.county}`,
+        window_start: start.toISOString(), window_end: end.toISOString(),
+      },
+    });
+  },
+  completeDelivery: (orderId: string, version: number) =>
+    liveRequest<Fulfilment>(`/fulfilments/${orderId}/status`, {
+      method: 'POST', body: { status: 'completed', expected_version: version },
     }),
   pay: (orderId: string, phone: string, key: string) => liveRequest<Payment>('/payments', {
     method: 'POST', body: { order_id: orderId, rail: 'mpesa', phone_e164: phone }, idempotencyKey: key,

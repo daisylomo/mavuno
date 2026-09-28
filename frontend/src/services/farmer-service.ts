@@ -25,6 +25,8 @@ type ApiFarmerOrder = {
     quantity_unit: ProduceListing['unit']; unit_price: string; line_total: string }>;
 };
 
+type ApiFulfilment = { status: string; version: number; method: 'pickup' | 'delivery' };
+
 const categoryLabels: Record<string, ProduceListing['category']> = {
   vegetables: 'Vegetables', fruits: 'Fruits', 'grains-cereals': 'Grains & Cereals',
   'tubers-roots': 'Tubers & Roots', 'dairy-poultry': 'Dairy & Poultry',
@@ -113,16 +115,27 @@ export const farmerService = {
   async getOrders(): Promise<FarmerOrder[]> {
     if (apiBaseUrl()) {
       const orders = await liveRequest<ApiFarmerOrder[]>('/farmers/me/orders');
-      return orders.map((order) => ({
+      return Promise.all(orders.map(async (order) => {
+        const plan = ['fulfilment', 'completed'].includes(order.status)
+          ? await liveRequest<ApiFulfilment>(`/fulfilments/${order.id}`) : null;
+        const status: OrderStatus = order.status === 'completed' ? 'completed'
+          : !plan || plan.status === 'pending' ? 'pending'
+          : plan.status === 'scheduled' ? 'accepted'
+          : plan.status === 'ready_for_handover' ? 'ready_for_pickup'
+          : plan.status === 'in_transit' ? 'dispatched'
+          : plan.status === 'completed' ? 'completed' : 'cancelled';
+        return {
         id: order.id, orderNumber: order.order_number, customerName: order.customer_name,
         customerPhone: order.customer_phone ?? 'Not provided',
         deliveryLocation: order.delivery_location ?? 'Not provided',
         totalAmount: Number(order.total_amount),
-        status: order.status === 'completed' ? 'completed' : order.status === 'paid' ? 'pending' : 'accepted',
+        status,
         paymentMethod: 'M-Pesa', createdAt: order.created_at,
+        fulfilmentStatus: plan?.status, fulfilmentVersion: plan?.version, fulfilmentMethod: plan?.method,
         items: order.items.map((item) => ({ listingId: item.listing_id, title: item.listing_title,
           quantity: Number(item.quantity), unit: item.quantity_unit,
           price: Number(item.unit_price), lineTotal: Number(item.line_total) })),
+        };
       }));
     }
     try {
@@ -143,6 +156,20 @@ export const farmerService = {
       order.id === orderId ? { ...order, status } : order
     );
     await AsyncStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(updated));
+  },
+
+  async advanceFulfilment(order: FarmerOrder): Promise<void> {
+    if (!apiBaseUrl() || !order.fulfilmentStatus || !order.fulfilmentVersion) {
+      throw new Error('The buyer must set a delivery plan first.');
+    }
+    const next = order.fulfilmentStatus === 'pending' ? 'scheduled'
+      : order.fulfilmentStatus === 'scheduled' ? 'ready_for_handover'
+      : order.fulfilmentStatus === 'ready_for_handover' && order.fulfilmentMethod === 'delivery'
+        ? 'in_transit' : null;
+    if (!next) throw new Error('No further farmer action is available for this order.');
+    await liveRequest(`/fulfilments/${order.id}/status`, {
+      method: 'POST', body: { status: next, expected_version: order.fulfilmentVersion },
+    });
   },
 
   async getStats(): Promise<FarmerStats> {

@@ -185,7 +185,7 @@ export default function FarmerDashboard() {
             <Text style={styles.actionBtnTitle}>Manage Customer Orders</Text>
             <Text style={styles.actionBtnSub}>
               {stats.pendingOrdersCount > 0
-                ? `${stats.pendingOrdersCount} paid orders awaiting coordination`
+                ? `${stats.pendingOrdersCount} paid orders awaiting the next step`
                 : 'View order history and status'}
             </Text>
           </View>

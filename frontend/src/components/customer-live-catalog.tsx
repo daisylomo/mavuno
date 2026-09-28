@@ -21,7 +21,7 @@ import {
   type Listing,
 } from '@/components/customer-catalog-api';
 import { formatQuantity, secondaryName } from '@/components/customer-live-catalog-format';
-import { customerCommerce, type Address, type Cart, type Order, type Payment } from '@/services/customer-commerce';
+import { customerCommerce, type Address, type Cart, type Fulfilment, type Order, type Payment } from '@/services/customer-commerce';
 import { normalizePhone, userService } from '@/services/user-service';
 
 function errorMessage(error: unknown): string {
@@ -80,6 +80,8 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
   const [phone, setPhone] = useState('');
   const [order, setOrder] = useState<Order | null>(null);
   const [payment, setPayment] = useState<Payment | null>(null);
+  const [fulfilment, setFulfilment] = useState<Fulfilment | null>(null);
+  const [deliveryDay, setDeliveryDay] = useState('');
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [checkoutKey, setCheckoutKey] = useState<string | null>(null);
   const [paymentKey, setPaymentKey] = useState<string | null>(null);
@@ -140,6 +142,7 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
       setOrder(created);
       setRecentOrders((current) => [created, ...current]);
       setPayment(null);
+      setFulfilment(null);
       setCart(await customerCommerce.cart());
       setCheckoutKey(null);
     });
@@ -166,6 +169,39 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
       const updatedOrder = await customerCommerce.order(order.id);
       setOrder(updatedOrder);
       setRecentOrders((items) => items.map((item) => item.id === updatedOrder.id ? updatedOrder : item));
+    });
+  }
+
+  async function openOrder(item: Order) {
+    await commerceAction(async () => {
+      const current = await customerCommerce.order(item.id);
+      setOrder(current);
+      setPayment((await customerCommerce.payments(item.id))[0] ?? null);
+      setFulfilment(['fulfilment', 'completed'].includes(current.status)
+        ? await customerCommerce.fulfilment(item.id) : null);
+    });
+  }
+
+  async function createDeliveryPlan() {
+    await commerceAction(async () => {
+      if (!order || order.status !== 'paid') throw new Error('Payment must be confirmed first.');
+      const address = addresses.find((item) => item.id === addressId);
+      if (!address) throw new Error('Select a delivery address.');
+      const plan = await customerCommerce.createDeliveryPlan(order.id, address, deliveryDay.trim());
+      setFulfilment(plan);
+      const current = await customerCommerce.order(order.id);
+      setOrder(current);
+      setRecentOrders((items) => items.map((item) => item.id === current.id ? current : item));
+    });
+  }
+
+  async function completeDelivery() {
+    await commerceAction(async () => {
+      if (!order || !fulfilment) return;
+      setFulfilment(await customerCommerce.completeDelivery(order.id, fulfilment.version));
+      const current = await customerCommerce.order(order.id);
+      setOrder(current);
+      setRecentOrders((items) => items.map((item) => item.id === current.id ? current : item));
     });
   }
 
@@ -304,7 +340,7 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
             {order && <>
               <Text style={styles.productName}>Order {order.id.slice(0, 8)} · {order.status}</Text>
               <Text style={styles.price}>Total: {order.currency} {order.total_amount}</Text>
-              {!payment && <>
+              {order.status === 'pending_payment' && !payment && <>
                 <TextInput accessibilityLabel="M-Pesa phone number" keyboardType="phone-pad" value={phone}
                   onChangeText={setPhone} placeholder="M-Pesa phone, e.g. 0712345678" style={styles.search} />
                 <Pressable accessibilityRole="button" disabled={commerceBusy} onPress={initiatePayment} style={styles.loadMore}>
@@ -325,13 +361,37 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
                   </Pressable>
                 )}
               </>}
+              {order.status === 'paid' && !fulfilment && <>
+                <Text style={styles.productName}>Plan delivery</Text>
+                <Text style={styles.muted}>Choose an address and a delivery date. The window is 9:00–17:00 East Africa Time.</Text>
+                {addresses.map((address) => (
+                  <Pressable key={address.id} accessibilityRole="button"
+                    onPress={() => setAddressId(address.id)} style={styles.cartRow}>
+                    <Text style={styles.muted}>{addressId === address.id ? '● ' : '○ '}
+                      {address.line_1}, {address.locality}, {address.county}</Text>
+                  </Pressable>
+                ))}
+                <TextInput accessibilityLabel="Delivery date" value={deliveryDay} onChangeText={setDeliveryDay}
+                  placeholder="YYYY-MM-DD" style={styles.search} />
+                <Pressable accessibilityRole="button" disabled={commerceBusy} onPress={createDeliveryPlan} style={styles.loadMore}>
+                  <Text style={styles.loadMoreText}>Send delivery plan to farmer</Text>
+                </Pressable>
+              </>}
+              {fulfilment && <>
+                <Text style={styles.description}>Delivery: {fulfilment.status.replace(/_/g, ' ')} · {fulfilment.location_details}</Text>
+                {fulfilment.status === 'in_transit' && (
+                  <Pressable accessibilityRole="button" disabled={commerceBusy} onPress={completeDelivery} style={styles.loadMore}>
+                    <Text style={styles.loadMoreText}>Confirm delivery received</Text>
+                  </Pressable>
+                )}
+              </>}
             </>}
             {!!recentOrders.length && <>
               <Text style={styles.sectionTitle}>Recent orders</Text>
               {recentOrders.slice(0, 5).map((item) => (
-                <Text key={item.id} style={styles.muted}>
-                  {item.id.slice(0, 8)} · {item.status} · {item.currency} {item.total_amount}
-                </Text>
+                <Pressable key={item.id} accessibilityRole="button" onPress={() => openOrder(item)}>
+                  <Text style={styles.link}>{item.id.slice(0, 8)} · {item.status} · {item.currency} {item.total_amount}</Text>
+                </Pressable>
               ))}
             </>}
           </View>
