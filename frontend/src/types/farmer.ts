@@ -6,6 +6,8 @@ export type ListingStatus = 'active' | 'low_stock' | 'sold_out' | 'paused';
 
 export interface ProduceListing {
   id: string;
+  version?: number;
+  productId?: string;
   title: string;
   category: ProduceCategory;
   price: number; // in KSh

@@ -57,6 +57,18 @@ class OrderResponse(BaseModel):
     created_at: datetime
 
 
+class FarmerOrderResponse(BaseModel):
+    id: UUID
+    order_number: str
+    customer_name: str
+    customer_phone: str | None
+    delivery_location: str | None
+    items: list[OrderItemResponse]
+    total_amount: Decimal
+    status: str
+    created_at: datetime
+
+
 class PaymentInitiateRequest(BaseModel):
     order_id: UUID
     rail: Literal["mpesa", "bank"]

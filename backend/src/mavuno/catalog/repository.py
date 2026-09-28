@@ -63,6 +63,16 @@ class CatalogRepository:
             query = query.with_for_update()
         return cast(Listing | None, await self.session.scalar(query))
 
+    async def list_owned_listings(self, farmer_id: UUID) -> list[Listing]:
+        return list(
+            await self.session.scalars(
+                select(Listing)
+                .where(Listing.farmer_id == farmer_id, Listing.status != "archived")
+                .order_by(Listing.created_at.desc(), Listing.id.desc())
+                .limit(100)
+            )
+        )
+
     async def listing_context(
         self, listing: Listing
     ) -> tuple[Product, ProduceCategory, list[ListingImage]]:

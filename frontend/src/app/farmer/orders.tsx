@@ -10,6 +10,7 @@ import {
 import { Colors } from '@/constants/theme';
 import { farmerService } from '@/services/farmer-service';
 import { FarmerOrder, OrderStatus } from '@/types/farmer';
+import { isBackendConfigured } from '@/services/auth-api';
 
 export default function FarmerOrdersScreen() {
   const [orders, setOrders] = useState<FarmerOrder[]>([]);
@@ -43,9 +44,9 @@ export default function FarmerOrdersScreen() {
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
       case 'pending':
-        return { bg: '#FEF3C7', text: '#92400E', label: 'Pending Approval' };
+        return { bg: '#FEF3C7', text: '#92400E', label: isBackendConfigured() ? 'Paid — awaiting delivery plan' : 'Pending Approval' };
       case 'accepted':
-        return { bg: '#DBEAFE', text: '#1E40AF', label: 'Order Accepted' };
+        return { bg: '#DBEAFE', text: '#1E40AF', label: isBackendConfigured() ? 'Delivery in progress' : 'Order Accepted' };
       case 'ready_for_pickup':
       case 'dispatched':
         return { bg: '#E0E7FF', text: '#3730A3', label: 'Dispatched' };
@@ -106,7 +107,7 @@ export default function FarmerOrdersScreen() {
         </View>
 
         {/* Actions */}
-        <View style={styles.actionRow}>
+        {!isBackendConfigured() && <View style={styles.actionRow}>
           {item.status === 'pending' && (
             <>
               <TouchableOpacity
@@ -137,7 +138,7 @@ export default function FarmerOrdersScreen() {
               <Text style={styles.completeBtnText}>Confirm Delivery & Settlement</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </View>}
       </View>
     );
   };

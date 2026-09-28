@@ -91,6 +91,11 @@ class CatalogService:
             )
         return await self._response(listing)
 
+    async def list_owned_listings(self, user: AuthenticatedUser) -> list[ListingResponse]:
+        self._farmer(user)
+        listings = await self.repository.list_owned_listings(user.id)
+        return [await self._response(listing) for listing in listings]
+
     async def list_listings(
         self,
         *,

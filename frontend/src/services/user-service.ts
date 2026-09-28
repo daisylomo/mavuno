@@ -137,6 +137,9 @@ export const userService = {
         password: params.password ?? '',
         role: params.role,
       });
+      try { await authApi.updateDisplayName(tokens.access_token, params.name.trim()); } catch {
+        // Registration succeeded; the name can be synchronized after sign-in.
+      }
       const user = fromBackendUser(tokens.user, {
         name: params.name.trim(),
         location: params.location,
@@ -200,7 +203,15 @@ export const userService = {
     if (isBackendConfigured()) {
       const tokens = await authApi.login(identifier, password ?? '');
       const cached = (await this.getUsers()).find((u) => u.id === tokens.user.id);
-      const user = fromBackendUser(tokens.user, cached);
+      let displayName = cached?.name;
+      try {
+        const remoteName = (await authApi.profile(tokens.access_token)).display_name;
+        if (remoteName !== 'Mavuno User' || !cached?.name) displayName = remoteName;
+        else await authApi.updateDisplayName(tokens.access_token, cached.name);
+      } catch {
+        // Keep the local display name if the profile request is temporarily unavailable.
+      }
+      const user = fromBackendUser(tokens.user, { ...cached, name: displayName });
 
       await AsyncStorage.setItem(
         TOKENS_STORAGE_KEY,
@@ -274,6 +285,17 @@ export const userService = {
     const current = await this.getCurrentUser();
     if (!current) return null;
 
+    if (isBackendConfigured()) {
+      const name = updates.name?.trim();
+      if (!name || name.length < 2) throw new Error('Enter a name with at least two characters.');
+      const { liveRequest } = await import('./live-api');
+      await liveRequest('/users/me', { method: 'PATCH', body: { display_name: name } });
+      const updated = { ...current, name };
+      await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updated));
+      await this.cacheProfile(updated);
+      return updated;
+    }
+
     const updatedUser: AppUser = {
       ...current,
       ...updates,
@@ -317,6 +339,24 @@ export const userService = {
       return { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken };
     } catch {
       return null;
+    }
+  },
+
+  async refreshAccessToken(): Promise<string> {
+    const tokens = await this.getTokens();
+    if (!tokens) throw new Error('Please sign in again to continue.');
+    try {
+      const renewed = await authApi.refresh(tokens.refreshToken);
+      await AsyncStorage.setItem(TOKENS_STORAGE_KEY, JSON.stringify({
+        accessToken: renewed.access_token,
+        refreshToken: renewed.refresh_token,
+      } satisfies StoredTokens));
+      const current = await this.getCurrentUser();
+      await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(fromBackendUser(renewed.user, current ?? undefined)));
+      return renewed.access_token;
+    } catch {
+      await AsyncStorage.multiRemove([CURRENT_USER_KEY, TOKENS_STORAGE_KEY]);
+      throw new Error('Your session expired. Please sign in again.');
     }
   },
 

@@ -773,6 +773,79 @@
         "title": "FarmerInsightsResponse",
         "type": "object"
       },
+      "FarmerOrderResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "customer_name": {
+            "title": "Customer Name",
+            "type": "string"
+          },
+          "customer_phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Phone"
+          },
+          "delivery_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Location"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "order_number": {
+            "title": "Order Number",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Amount",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "order_number",
+          "customer_name",
+          "customer_phone",
+          "delivery_location",
+          "items",
+          "total_amount",
+          "status",
+          "created_at"
+        ],
+        "title": "FarmerOrderResponse",
+        "type": "object"
+      },
       "FarmerProfileResponse": {
         "properties": {
           "county": {
@@ -3953,6 +4026,66 @@
         ]
       }
     },
+    "/api/v1/farmers/me/listings": {
+      "get": {
+        "operationId": "owned_listings_api_v1_farmers_me_listings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ListingResponse"
+                  },
+                  "title": "Response Owned Listings Api V1 Farmers Me Listings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Owned Listings",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/farmers/me/orders": {
+      "get": {
+        "operationId": "farmer_orders_api_v1_farmers_me_orders_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FarmerOrderResponse"
+                  },
+                  "title": "Response Farmer Orders Api V1 Farmers Me Orders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Farmer Orders",
+        "tags": [
+          "commerce"
+        ]
+      }
+    },
     "/api/v1/fulfilments/{order_id}": {
       "get": {
         "operationId": "get_fulfilment_api_v1_fulfilments__order_id__get",
@@ -4924,6 +5057,58 @@
         ]
       }
     },
+    "/api/v1/orders/{order_id}/payments": {
+      "get": {
+        "operationId": "order_payments_api_v1_orders__order_id__payments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentResponse"
+                  },
+                  "title": "Response Order Payments Api V1 Orders  Order Id  Payments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Order Payments",
+        "tags": [
+          "commerce"
+        ]
+      }
+    },
     "/api/v1/payments": {
       "post": {
         "operationId": "initiate_payment_api_v1_payments_post",
@@ -5772,6 +5957,36 @@
         "summary": "Register Installation",
         "tags": [
           "profiles"
+        ]
+      }
+    },
+    "/api/v1/users/me/orders": {
+      "get": {
+        "operationId": "buyer_orders_api_v1_users_me_orders_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderResponse"
+                  },
+                  "title": "Response Buyer Orders Api V1 Users Me Orders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Buyer Orders",
+        "tags": [
+          "commerce"
         ]
       }
     },

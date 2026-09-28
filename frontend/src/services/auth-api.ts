@@ -25,6 +25,8 @@ export interface TokenResponse {
   user: BackendUser;
 }
 
+export interface BackendProfile { display_name: string }
+
 /** The app calls buyers "customer"; the backend calls them "buyer". */
 export function toBackendRole(role: AppRole): BackendRole {
   return role === 'farmer' ? 'farmer' : 'buyer';
@@ -163,8 +165,29 @@ export const authApi = {
     return parseTokenResponse(await request('/auth/login', { method: 'POST', body }));
   },
 
+  async refresh(refreshToken: string): Promise<TokenResponse> {
+    return parseTokenResponse(await request('/auth/refresh', {
+      method: 'POST',
+      body: { refresh_token: refreshToken },
+    }));
+  },
+
   async me(accessToken: string): Promise<BackendUser> {
     return parseUser(await request('/auth/me', { method: 'GET', accessToken }));
+  },
+
+  async profile(accessToken: string): Promise<BackendProfile> {
+    const value = await request('/users/me', { method: 'GET', accessToken });
+    if (!isRecord(value) || typeof value.display_name !== 'string') {
+      throw new Error('The server returned an unexpected profile payload.');
+    }
+    return { display_name: value.display_name };
+  },
+
+  async updateDisplayName(accessToken: string, displayName: string): Promise<void> {
+    await request('/users/me', {
+      method: 'PATCH', body: { display_name: displayName }, accessToken,
+    });
   },
 
   async logout(accessToken: string, refreshToken: string): Promise<void> {

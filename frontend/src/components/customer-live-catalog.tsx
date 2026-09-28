@@ -21,6 +21,8 @@ import {
   type Listing,
 } from '@/components/customer-catalog-api';
 import { formatQuantity, secondaryName } from '@/components/customer-live-catalog-format';
+import { customerCommerce, type Address, type Cart, type Order, type Payment } from '@/services/customer-commerce';
+import { normalizePhone, userService } from '@/services/user-service';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'The catalog request failed. Try again.';
@@ -72,6 +74,100 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
   const [selected, setSelected] = useState<Listing | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailRetry, setDetailRetry] = useState(0);
+  const [cart, setCart] = useState<Cart | null>(null);
+  const [commerceError, setCommerceError] = useState<string | null>(null);
+  const [commerceBusy, setCommerceBusy] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [order, setOrder] = useState<Order | null>(null);
+  const [payment, setPayment] = useState<Payment | null>(null);
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [checkoutKey, setCheckoutKey] = useState<string | null>(null);
+  const [paymentKey, setPaymentKey] = useState<string | null>(null);
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [addressId, setAddressId] = useState<string | null>(null);
+  const [street, setStreet] = useState('');
+  const [locality, setLocality] = useState('');
+  const [county, setCounty] = useState('');
+
+  useEffect(() => {
+    customerCommerce.cart().then(setCart).catch((error: unknown) => setCommerceError(errorMessage(error)));
+    userService.getCurrentUser().then((user) => setPhone(user?.phone ?? ''));
+    customerCommerce.addresses().then((items) => {
+      setAddresses(items);
+      if (items.length) setAddressId(items[0].id);
+    }).catch((error: unknown) => setCommerceError(errorMessage(error)));
+    customerCommerce.orders().then(async (orders) => {
+      setRecentOrders(orders);
+      const unfinished = orders.find((item) => item.status === 'pending_payment');
+      if (!unfinished) return;
+      setOrder(unfinished);
+      const attempts = await customerCommerce.payments(unfinished.id);
+      if (attempts.length) setPayment(attempts[0]);
+    }).catch((error: unknown) => setCommerceError(errorMessage(error)));
+  }, []);
+
+  async function commerceAction(action: () => Promise<void>) {
+    setCommerceBusy(true);
+    setCommerceError(null);
+    try { await action(); } catch (error) { setCommerceError(errorMessage(error)); }
+    finally { setCommerceBusy(false); }
+  }
+
+  async function addToCart(listing: Listing) {
+    await commerceAction(async () => {
+      setCart(await customerCommerce.add(listing.id, 1));
+      setSelectedId(null);
+    });
+  }
+
+  async function checkout() {
+    await commerceAction(async () => {
+      let chosenAddress = addressId;
+      if (!chosenAddress) {
+        if (!street.trim() || !locality.trim() || !county.trim()) {
+          throw new Error('Enter your street, locality and county for delivery.');
+        }
+        const created = await customerCommerce.createAddress({
+          line_1: street.trim(), locality: locality.trim(), county: county.trim(),
+        });
+        setAddresses((items) => [created, ...items]);
+        setAddressId(created.id);
+        chosenAddress = created.id;
+      }
+      const key = checkoutKey ?? `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setCheckoutKey(key);
+      const created = await customerCommerce.checkout(key, chosenAddress);
+      setOrder(created);
+      setRecentOrders((current) => [created, ...current]);
+      setPayment(null);
+      setCart(await customerCommerce.cart());
+      setCheckoutKey(null);
+    });
+  }
+
+  async function initiatePayment() {
+    await commerceAction(async () => {
+      if (!order) throw new Error('Create the order first.');
+      const normalized = normalizePhone(phone);
+      if (!/^\+254[17]\d{8}$/.test(normalized)) throw new Error('Enter a valid Kenyan M-Pesa phone number.');
+      const key = paymentKey ?? `mpesa-${order.id}-${Date.now()}`;
+      setPaymentKey(key);
+      const created = await customerCommerce.pay(order.id, normalized, key);
+      setPayment(created);
+      setPaymentKey(null);
+    });
+  }
+
+  async function checkPayment() {
+    await commerceAction(async () => {
+      if (!payment || !order) return;
+      const current = await customerCommerce.payment(payment.id);
+      setPayment(current);
+      const updatedOrder = await customerCommerce.order(order.id);
+      setOrder(updatedOrder);
+      setRecentOrders((items) => items.map((item) => item.id === updatedOrder.id ? updatedOrder : item));
+    });
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -166,7 +262,79 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
             <Text style={styles.heroTitle}>Welcome to the Customer Marketplace</Text>
             <Text style={styles.heroSubtitle}>Browse fresh produce from local farmers</Text>
           </View>
-          <Text style={styles.disclaimer}>Live listings from the API. Sign-in, cart and checkout are not connected yet.</Text>
+          <Text style={styles.disclaimer}>Live listings and secure checkout from Mavuno.</Text>
+          {commerceError && <Text style={styles.error}>{commerceError}</Text>}
+          <View style={styles.message}>
+            <Text style={styles.sectionTitle}>Your cart</Text>
+            {cart?.items.length ? cart.items.map((item) => (
+              <View key={item.listing_id} style={styles.cartRow}>
+                <Text style={styles.productName}>{item.title} · {item.quantity} {item.quantity_unit}</Text>
+                <Text style={styles.price}>KES {item.line_total}</Text>
+                <Pressable accessibilityRole="button" disabled={commerceBusy} onPress={() => commerceAction(async () => {
+                  await customerCommerce.remove(item.listing_id);
+                  setCart(await customerCommerce.cart());
+                })}><Text style={styles.link}>Remove</Text></Pressable>
+              </View>
+            )) : <Text style={styles.muted}>Your cart is empty.</Text>}
+            {!!cart?.items.length && !order && <>
+              <Text style={styles.price}>Subtotal: KES {cart.subtotal_amount}</Text>
+              <Text style={styles.productName}>Delivery address</Text>
+              {addresses.map((address) => (
+                <Pressable key={address.id} accessibilityRole="button"
+                  onPress={() => setAddressId(address.id)} style={styles.cartRow}>
+                  <Text style={styles.muted}>{addressId === address.id ? '● ' : '○ '}
+                    {address.line_1}, {address.locality}, {address.county}</Text>
+                </Pressable>
+              ))}
+              <Pressable accessibilityRole="button" onPress={() => setAddressId(null)}>
+                <Text style={styles.link}>Use a new address</Text>
+              </Pressable>
+              {!addressId && <>
+                <TextInput accessibilityLabel="Street address" value={street} onChangeText={setStreet}
+                  placeholder="Street or building" style={styles.search} />
+                <TextInput accessibilityLabel="Locality" value={locality} onChangeText={setLocality}
+                  placeholder="Town or locality" style={styles.search} />
+                <TextInput accessibilityLabel="County" value={county} onChangeText={setCounty}
+                  placeholder="County" style={styles.search} />
+              </>}
+              <Pressable accessibilityRole="button" disabled={commerceBusy} onPress={checkout} style={styles.loadMore}>
+                <Text style={styles.loadMoreText}>Place order</Text>
+              </Pressable>
+            </>}
+            {order && <>
+              <Text style={styles.productName}>Order {order.id.slice(0, 8)} · {order.status}</Text>
+              <Text style={styles.price}>Total: {order.currency} {order.total_amount}</Text>
+              {!payment && <>
+                <TextInput accessibilityLabel="M-Pesa phone number" keyboardType="phone-pad" value={phone}
+                  onChangeText={setPhone} placeholder="M-Pesa phone, e.g. 0712345678" style={styles.search} />
+                <Pressable accessibilityRole="button" disabled={commerceBusy} onPress={initiatePayment} style={styles.loadMore}>
+                  <Text style={styles.loadMoreText}>Request M-Pesa payment</Text>
+                </Pressable>
+              </>}
+              {payment && <>
+                <Text style={styles.description}>{payment.state === 'succeeded'
+                  ? 'M-Pesa payment confirmed by the server.'
+                  : `M-Pesa: ${payment.state}. Approve the prompt on your phone, then check the status.`}</Text>
+                {payment.failure_code && <Text style={styles.error}>Payment failed: {payment.failure_code}</Text>}
+                <Pressable accessibilityRole="button" disabled={commerceBusy} onPress={checkPayment} style={styles.loadMore}>
+                  <Text style={styles.loadMoreText}>Check payment status</Text>
+                </Pressable>
+                {['failed', 'cancelled', 'expired'].includes(payment.state) && (
+                  <Pressable accessibilityRole="button" onPress={() => { setPayment(null); setPaymentKey(null); }}>
+                    <Text style={styles.link}>Try M-Pesa again</Text>
+                  </Pressable>
+                )}
+              </>}
+            </>}
+            {!!recentOrders.length && <>
+              <Text style={styles.sectionTitle}>Recent orders</Text>
+              {recentOrders.slice(0, 5).map((item) => (
+                <Text key={item.id} style={styles.muted}>
+                  {item.id.slice(0, 8)} · {item.status} · {item.currency} {item.total_amount}
+                </Text>
+              ))}
+            </>}
+          </View>
           <TextInput
             accessibilityLabel="Search listings"
             placeholder="Search produce (at least 2 letters)..."
@@ -276,7 +444,10 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
                 <Text style={styles.description}>{selected.description || 'No description provided.'}</Text>
                 <Price listing={selected} />
                 <Text style={styles.muted}>{formatQuantity(selected.available_quantity)} {selected.quantity_unit} available</Text>
-                <Text style={styles.disclaimer}>Ordering this listing will be available after buyer sign-in and cart integration.</Text>
+                <Pressable accessibilityRole="button" disabled={commerceBusy || Number(selected.available_quantity) <= 0}
+                  onPress={() => addToCart(selected)} style={styles.loadMore}>
+                  <Text style={styles.loadMoreText}>Add to cart</Text>
+                </Pressable>
               </>
             ) : (
               <ActivityIndicator accessibilityLabel="Loading listing details" color="#2196F3" style={styles.loader} />
@@ -326,4 +497,5 @@ const styles = StyleSheet.create({
   close: { color: '#1164A7', fontWeight: '700', alignSelf: 'flex-end', padding: 8, marginBottom: 10 },
   detailPhoto: { width: '100%', height: 180 },
   description: { color: '#456276', fontSize: 15, lineHeight: 23, marginVertical: 18 },
+  cartRow: { backgroundColor: '#fff', borderRadius: 12, padding: 14, gap: 4 },
 });

@@ -13,6 +13,7 @@ import { Href, useRouter } from 'expo-router';
 import CustomInput from '../../components/CustomInput';
 import { Colors } from '../../constants/theme';
 import { AppUser, userService } from '../../services/user-service';
+import { isBackendConfigured } from '../../services/auth-api';
 
 export default function ProfileSettings() {
   const router = useRouter();
@@ -48,9 +49,7 @@ export default function ProfileSettings() {
     try {
       const updated = await userService.updateProfile({
         name: name.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-        location: location.trim(),
+        ...(isBackendConfigured() ? {} : { email: email.trim(), phone: phone.trim(), location: location.trim() }),
       });
       if (updated) {
         setCurrentUser(updated);
@@ -130,6 +129,7 @@ export default function ProfileSettings() {
           label="Email Address"
           value={email}
           onChangeText={setEmail}
+          editable={!isBackendConfigured()}
           keyboardType="email-address"
           autoCapitalize="none"
         />
@@ -138,6 +138,7 @@ export default function ProfileSettings() {
           label="Phone Number (M-Pesa enabled)"
           value={phone}
           onChangeText={setPhone}
+          editable={!isBackendConfigured()}
           keyboardType="phone-pad"
         />
 
@@ -145,6 +146,7 @@ export default function ProfileSettings() {
           label="Primary Farm / Delivery Location"
           value={location}
           onChangeText={setLocation}
+          editable={!isBackendConfigured()}
         />
 
         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>

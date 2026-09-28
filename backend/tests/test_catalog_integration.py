@@ -137,6 +137,11 @@ def test_catalog_http_contract_and_cache_headers() -> None:
             assert created.status_code == 201
             listing_id = created.json()["id"]
 
+            owned = client.get("/api/v1/farmers/me/listings")
+            assert owned.status_code == 200
+            assert owned.json()[0]["id"] == listing_id
+            assert owned.json()[0]["status"] == "draft"
+
             activated = client.patch(
                 f"/api/v1/listings/{listing_id}",
                 json={"expected_version": 1, "status": "active"},

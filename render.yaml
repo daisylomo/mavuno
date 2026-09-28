@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: mavuno-api
+    runtime: docker
+    plan: free
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    healthCheckPath: /health/ready
+    dockerCommand: /bin/sh -c "alembic -c conf/alembic.ini upgrade head && exec supervisord -n -c /app/conf/supervisord.conf"
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: MAVUNO_ENVIRONMENT
+        value: production
+      - key: MAVUNO_DATABASE_URL
+        sync: false
+      - key: MAVUNO_REDIS_URL
+        sync: false
+      - key: MAVUNO_AUTH_SIGNING_KEYS
+        sync: false
+      - key: MAVUNO_PUSH_TOKEN_HASH_KEY
+        generateValue: true
+      - key: MAVUNO_PUSH_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: MAVUNO_PAYMENTS_ENABLED
+        value: "false"

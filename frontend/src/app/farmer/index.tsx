@@ -28,9 +28,11 @@ export default function FarmerDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
   const loadData = async () => {
     try {
+      setError('');
       const [allListings, currentStats, user] = await Promise.all([
         farmerService.getListings(),
         farmerService.getStats(),
@@ -39,6 +41,8 @@ export default function FarmerDashboard() {
       setListings(allListings);
       setStats(currentStats);
       setCurrentUser(user);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load your listings.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -68,16 +72,20 @@ export default function FarmerDashboard() {
   };
 
   const handleToggleStatus = async (item: ProduceListing) => {
-    const nextStatus: ListingStatus = item.status === 'active' ? 'paused' : 'active';
-    await farmerService.updateListingStatus(item.id, nextStatus);
-    await loadData();
+    try {
+      const nextStatus: ListingStatus = item.status === 'active' || item.status === 'low_stock' ? 'paused' : 'active';
+      await farmerService.updateListingStatus(item.id, nextStatus);
+      await loadData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not change listing status.');
+    }
   };
 
   const handleDeleteListing = async (id: string, title: string) => {
     if (Platform.OS === 'web') {
       if (window.confirm(`Are you sure you want to remove "${title}"?`)) {
-        await farmerService.deleteListing(id);
-        await loadData();
+        try { await farmerService.deleteListing(id); await loadData(); }
+        catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not remove listing.'); }
       }
     } else {
       Alert.alert(
@@ -89,8 +97,8 @@ export default function FarmerDashboard() {
             text: 'Delete',
             style: 'destructive',
             onPress: async () => {
-              await farmerService.deleteListing(id);
-              await loadData();
+              try { await farmerService.deleteListing(id); await loadData(); }
+              catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not remove listing.'); }
             },
           },
         ]
@@ -177,7 +185,7 @@ export default function FarmerDashboard() {
             <Text style={styles.actionBtnTitle}>Manage Customer Orders</Text>
             <Text style={styles.actionBtnSub}>
               {stats.pendingOrdersCount > 0
-                ? `${stats.pendingOrdersCount} orders waiting for dispatch`
+                ? `${stats.pendingOrdersCount} paid orders awaiting coordination`
                 : 'View order history and status'}
             </Text>
           </View>
@@ -185,6 +193,7 @@ export default function FarmerDashboard() {
       </View>
 
       {/* Section Title */}
+      {!!error && <Text style={{ color: '#B91C1C', marginBottom: 12 }}>{error}</Text>}
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionTitle}>My Produce Catalog</Text>
         <Text style={styles.listingsCountText}>{listings.length} items listed</Text>
@@ -241,15 +250,15 @@ export default function FarmerDashboard() {
           <TouchableOpacity
             style={[
               styles.actionPill,
-              item.status === 'active' ? styles.pausePill : styles.resumePill,
+              item.status === 'active' || item.status === 'low_stock' ? styles.pausePill : styles.resumePill,
             ]}
             onPress={() => handleToggleStatus(item)}>
             <Text
               style={[
                 styles.actionPillText,
-                item.status === 'active' ? styles.pauseText : styles.resumeText,
+                item.status === 'active' || item.status === 'low_stock' ? styles.pauseText : styles.resumeText,
               ]}>
-              {item.status === 'active' ? '⏸️ Pause Listing' : '▶️ Activate'}
+              {item.status === 'active' || item.status === 'low_stock' ? '⏸️ Pause Listing' : '▶️ Activate'}
             </Text>
           </TouchableOpacity>
 

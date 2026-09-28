@@ -100,6 +100,13 @@ async def create_listing(
     return await _service(session).create_listing(current_user, payload)
 
 
+@router.get("/farmers/me/listings", response_model=list[ListingResponse])
+async def owned_listings(
+    current_user: CurrentUser, session: DatabaseSession
+) -> list[ListingResponse]:
+    return await _service(session).list_owned_listings(current_user)
+
+
 @router.get("/listings/{listing_id}", response_model=ListingResponse)
 async def get_listing(
     listing_id: UUID, request: Request, response: Response, session: DatabaseSession

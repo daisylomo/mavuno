@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/theme';
 import { farmerService } from '@/services/farmer-service';
 import { ProduceCategory, ProduceUnit } from '@/types/farmer';
+import { apiBaseUrl } from '@/components/customer-catalog-api';
 
 const CATEGORIES: { label: ProduceCategory; icon: string }[] = [
   { label: 'Vegetables', icon: '🥬' },
@@ -35,12 +36,29 @@ export default function NewListingScreen() {
   const [unit, setUnit] = useState<ProduceUnit>('kg');
   const [harvestDate, setHarvestDate] = useState('Harvested Today');
   const [description, setDescription] = useState('');
+  const [products, setProducts] = useState<Array<{ id: string; name: string; default_unit: ProduceUnit }>>([]);
+  const [productId, setProductId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const base = apiBaseUrl();
+    if (!base) return;
+    fetch(`${base}/catalog/products`).then(async (response) => {
+      if (!response.ok) throw new Error('Could not load produce types.');
+      return response.json();
+    }).then((data) => setProducts(data)).catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : 'Could not load produce types.');
+    });
+  }, []);
 
   const handleSave = async () => {
     if (!title.trim()) {
       setError('Please enter the produce name');
+      return;
+    }
+    if (apiBaseUrl() && !productId) {
+      setError('Select a produce type before publishing.');
       return;
     }
     const numPrice = parseFloat(price);
@@ -60,6 +78,7 @@ export default function NewListingScreen() {
     try {
       await farmerService.createListing({
         title: title.trim(),
+        productId: productId || undefined,
         category,
         price: numPrice,
         quantity: numQuantity,
@@ -101,6 +120,21 @@ export default function NewListingScreen() {
         ) : null}
 
         {/* Produce Name */}
+        {apiBaseUrl() && (
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Produce type *</Text>
+            <View style={styles.chipRow}>
+              {products.map((product) => (
+                <TouchableOpacity key={product.id}
+                  style={[styles.chip, productId === product.id && styles.chipSelected]}
+                  onPress={() => { setProductId(product.id); setUnit(product.default_unit); }}>
+                  <Text style={styles.chipText}>{product.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {products.length === 0 && <Text>No produce types are available yet. An administrator must add them.</Text>}
+          </View>
+        )}
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>Produce / Crop Name *</Text>
           <TextInput
@@ -113,7 +147,7 @@ export default function NewListingScreen() {
         </View>
 
         {/* Category Selector */}
-        <View style={styles.fieldGroup}>
+        {!apiBaseUrl() && <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>Category *</Text>
           <View style={styles.chipRow}>
             {CATEGORIES.map((cat) => {
@@ -138,7 +172,7 @@ export default function NewListingScreen() {
               );
             })}
           </View>
-        </View>
+        </View>}
 
         {/* Pricing & Units */}
         <View style={styles.twoColumnRow}>

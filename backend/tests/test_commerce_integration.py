@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import delete, select
 
+from mavuno.api.dependencies import get_current_user
 from mavuno.auth.context import AuthenticatedUser
 from mavuno.commerce.repository import CommerceRepository
 from mavuno.commerce.service import CartService, CheckoutService, _now
@@ -27,6 +30,7 @@ from mavuno.db.models import (
     Product,
     User,
 )
+from mavuno.main import create_app
 
 TEST_DATABASE_URL = os.getenv("MAVUNO_TEST_DATABASE_URL")
 pytestmark = [
@@ -162,3 +166,62 @@ async def test_checkout_is_idempotent_and_expiration_releases_inventory() -> Non
     finally:
         await cleanup(database, buyer.id, farmer_id, category_id, product_id, listing_id)
         await database.dispose()
+
+
+def test_farmer_order_visibility_and_buyer_recovery() -> None:
+    assert TEST_DATABASE_URL is not None
+    settings = Settings(environment="test", database_url=SecretStr(TEST_DATABASE_URL))
+
+    async def prepare() -> tuple[AuthenticatedUser, UUID, UUID, UUID, UUID, UUID]:
+        database = Database(settings)
+        try:
+            buyer, farmer_id, category_id, product_id, listing_id = await seed(database)
+            async with database.session() as session:
+                await CartService(CommerceRepository(session)).upsert(
+                    buyer, listing_id, Decimal("2")
+                )
+            async with database.session() as session:
+                order = await CheckoutService(CommerceRepository(session), settings).checkout(
+                    buyer, f"checkout-{uuid4()}", None
+                )
+                stored = await session.get(Order, order.id)
+                assert stored is not None
+                stored.status = "paid"
+                await session.commit()
+            return buyer, farmer_id, category_id, product_id, listing_id, order.id
+        finally:
+            await database.dispose()
+
+    buyer, farmer_id, category_id, product_id, listing_id, order_id = asyncio.run(prepare())
+    actor = AuthenticatedUser(farmer_id, None, None, frozenset({"farmer"}), 0)
+
+    async def authenticated() -> AuthenticatedUser:
+        return actor
+
+    app = create_app(settings)
+    app.dependency_overrides[get_current_user] = authenticated
+    try:
+        with TestClient(app) as client:
+            visible = client.get("/api/v1/farmers/me/orders")
+            assert visible.status_code == 200
+            assert len(visible.json()) == 1
+            assert visible.json()[0]["items"][0]["listing_id"] == str(listing_id)
+            assert visible.json()[0]["total_amount"] == "200.0000"
+            assert client.get(f"/api/v1/orders/{order_id}/payments").status_code == 404
+
+            actor = buyer
+            assert client.get("/api/v1/farmers/me/orders").status_code == 403
+            orders = client.get("/api/v1/users/me/orders")
+            assert orders.status_code == 200
+            assert orders.json()[0]["id"] == str(order_id)
+            assert client.get(f"/api/v1/orders/{order_id}/payments").json() == []
+    finally:
+
+        async def finish() -> None:
+            database = Database(settings)
+            try:
+                await cleanup(database, buyer.id, farmer_id, category_id, product_id, listing_id)
+            finally:
+                await database.dispose()
+
+        asyncio.run(finish())

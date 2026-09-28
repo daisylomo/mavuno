@@ -17,6 +17,7 @@ from mavuno.db.models import (
     OutboxJob,
     Payment,
     Product,
+    Profile,
     User,
 )
 
@@ -97,6 +98,55 @@ class CommerceRepository:
         if lock:
             query = query.with_for_update()
         return cast(Order | None, await self.session.scalar(query))
+
+    async def buyer_orders(self, buyer_id: UUID) -> list[Order]:
+        return list(
+            await self.session.scalars(
+                select(Order)
+                .where(Order.buyer_id == buyer_id)
+                .order_by(Order.created_at.desc(), Order.id.desc())
+                .limit(50)
+            )
+        )
+
+    async def farmer_order_rows(self, farmer_id: UUID) -> list[Any]:
+        return list(
+            (
+                await self.session.execute(
+                    select(Order, OrderItem, User, Profile, Address)
+                    .join(OrderItem, OrderItem.order_id == Order.id)
+                    .join(User, User.id == Order.buyer_id)
+                    .outerjoin(Profile, Profile.user_id == User.id)
+                    .outerjoin(Address, Address.id == Order.delivery_address_id)
+                    .where(
+                        OrderItem.farmer_id == farmer_id,
+                        Order.status.in_(("paid", "fulfilment", "completed")),
+                    )
+                    .order_by(Order.created_at.desc(), Order.id.desc())
+                    .limit(100)
+                )
+            ).all()
+        )
+
+    async def order_payments(self, order_id: UUID) -> list[Payment]:
+        return list(
+            await self.session.scalars(
+                select(Payment)
+                .where(Payment.order_id == order_id)
+                .order_by(Payment.created_at.desc(), Payment.id.desc())
+            )
+        )
+
+    async def paid_order_phone(self, order_id: UUID) -> str | None:
+        return cast(
+            str | None,
+            await self.session.scalar(
+                select(Payment.payer_phone_e164)
+                .where(Payment.order_id == order_id, Payment.state == "succeeded")
+                .order_by(Payment.created_at.desc())
+                .limit(1)
+            ),
+        )
 
     async def order_items(self, order_id: UUID) -> list[OrderItem]:
         return list(
