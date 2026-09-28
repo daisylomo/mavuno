@@ -7,6 +7,7 @@
 **/.expo/
 **/dist/
 **/dist-test/
+**/dist-test-android/
 **/.web-build/
 **/expo-env.d.ts
 
