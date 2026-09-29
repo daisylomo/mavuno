@@ -38,6 +38,7 @@ COPY --chown=mavuno:mavuno src ./src
 COPY --chown=mavuno:mavuno conf ./conf
 COPY --chown=mavuno:mavuno db ./db
 COPY --chown=mavuno:mavuno migrations ./migrations
+COPY --chown=mavuno:mavuno --chmod=755 entrypoint.sh ./entrypoint.sh
 
 USER mavuno
 
@@ -46,4 +47,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=2)"]
 
-CMD ["supervisord", "-n", "-c", "/app/conf/supervisord.conf"]
+CMD ["/app/entrypoint.sh"]

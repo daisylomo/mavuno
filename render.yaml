@@ -6,7 +6,7 @@ services:
     dockerfilePath: backend/Dockerfile
     dockerContext: backend
     healthCheckPath: /health/ready
-    dockerCommand: /bin/sh -c "alembic -c conf/alembic.ini upgrade head && exec supervisord -n -c /app/conf/supervisord.conf"
+    dockerCommand: /app/entrypoint.sh
     envVars:
       - key: PORT
         value: "8000"
