@@ -91,17 +91,18 @@ class CatalogService:
         )
         self.repository.add(listing)
         await self.repository.flush()
-        self.repository.add(
-            InventoryMovement(
-                id=uuid4(),
-                listing_id=listing.id,
-                actor_user_id=user.id,
-                movement_type="initial",
-                quantity_delta=listing.available_quantity,
-                resulting_quantity=listing.available_quantity,
-                reason="Initial listing quantity",
+        if listing.available_quantity > 0:
+            self.repository.add(
+                InventoryMovement(
+                    id=uuid4(),
+                    listing_id=listing.id,
+                    actor_user_id=user.id,
+                    movement_type="initial",
+                    quantity_delta=listing.available_quantity,
+                    resulting_quantity=listing.available_quantity,
+                    reason="Initial listing quantity",
+                )
             )
-        )
         await self.repository.commit()
         await self.repository.refresh(listing)
         return await self._response(listing)

@@ -20,7 +20,7 @@ No real payment is collected. The browser admin portal is served by the API at
 
 ## Validation
 
-Local validation on 29 September 2026 passed 200 backend tests (91.77% coverage),
+Local validation on 29 September 2026 passed 201 backend tests (91.74% coverage),
 14 Python API-client journeys, 48 frontend tests, TypeScript, Ruff and mypy.
 MySQL 8.4 and Redis 7 were disposable local containers; all nine migrations
 applied successfully. Expo web export succeeded. Android APK installation and
@@ -48,3 +48,4 @@ configure production provider integrations for enabled premium/push features,
 and validate backup/restore, monitoring and expected hosting capacity.
 Do not enable a provider-dependent feature without its provider credentials.
 These gates cannot be inferred from passing automated tests or sandbox payments.
+
