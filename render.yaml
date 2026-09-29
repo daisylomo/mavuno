@@ -24,3 +24,17 @@ services:
         sync: false
       - key: MAVUNO_PAYMENTS_ENABLED
         value: "false"
+      - key: MAVUNO_DARAJA_ENVIRONMENT
+        value: sandbox
+      - key: MAVUNO_DARAJA_CONSUMER_KEY
+        sync: false
+      - key: MAVUNO_DARAJA_CONSUMER_SECRET
+        sync: false
+      - key: MAVUNO_DARAJA_SHORTCODE
+        sync: false
+      - key: MAVUNO_DARAJA_PASSKEY
+        sync: false
+      - key: MAVUNO_DARAJA_CALLBACK_BASE_URL
+        sync: false
+      - key: MAVUNO_DARAJA_CALLBACK_TOKEN
+        sync: false

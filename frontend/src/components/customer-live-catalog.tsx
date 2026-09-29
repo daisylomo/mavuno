@@ -299,6 +299,9 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
             <Text style={styles.heroSubtitle}>Browse fresh produce from local farmers</Text>
           </View>
           <Text style={styles.disclaimer}>Live listings and secure checkout from Mavuno.</Text>
+          {process.env.EXPO_PUBLIC_MAVUNO_PAYMENTS_SANDBOX === '1' && (
+            <Text style={styles.disclaimer}>M-Pesa is in sandbox test mode. No real payment will be collected.</Text>
+          )}
           {commerceError && <Text style={styles.error}>{commerceError}</Text>}
           <View style={styles.message}>
             <Text style={styles.sectionTitle}>Your cart</Text>
@@ -350,7 +353,9 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
               {payment && <>
                 <Text style={styles.description}>{payment.state === 'succeeded'
                   ? 'M-Pesa payment confirmed by the server.'
-                  : `M-Pesa: ${payment.state}. Approve the prompt on your phone, then check the status.`}</Text>
+                  : payment.state === 'pending_customer'
+                    ? 'M-Pesa request sent. Approve the prompt, then check the status.'
+                    : `M-Pesa: ${payment.state.replace(/_/g, ' ')}.`}</Text>
                 {payment.failure_code && <Text style={styles.error}>Payment failed: {payment.failure_code}</Text>}
                 <Pressable accessibilityRole="button" disabled={commerceBusy} onPress={checkPayment} style={styles.loadMore}>
                   <Text style={styles.loadMoreText}>Check payment status</Text>
