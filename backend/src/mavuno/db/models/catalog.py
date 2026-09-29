@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, String, UniqueConstraint, text
-from sqlalchemy.dialects.mysql import DATETIME, INTEGER, TEXT
+from sqlalchemy.dialects.mysql import DATETIME, INTEGER, MEDIUMBLOB, TEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mavuno.db.base import Base, TimestampMixin, UUIDBinary
@@ -102,6 +102,30 @@ class ListingImage(TimestampMixin, Base):
     object_key: Mapped[str] = mapped_column(String(512), nullable=False)
     alt_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(INTEGER(unsigned=True), nullable=False)
+
+
+class ListingImageContent(Base):
+    """Photo bytes uploaded from the app, kept in MySQL so a stateless host can serve them."""
+
+    __tablename__ = "listing_image_contents"
+    __table_args__ = (
+        CheckConstraint("byte_size > 0", name="byte_size_positive"),
+        CheckConstraint(
+            "content_type IN ('image/jpeg','image/png','image/webp')",
+            name="content_type_allowed",
+        ),
+    )
+
+    image_id: Mapped[UUID] = mapped_column(
+        UUIDBinary(), ForeignKey("listing_images.id", ondelete="CASCADE"), primary_key=True
+    )
+    content_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    byte_size: Mapped[int] = mapped_column(INTEGER(unsigned=True), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    content: Mapped[bytes] = mapped_column(MEDIUMBLOB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), nullable=False, server_default=text("CURRENT_TIMESTAMP(6)")
+    )
 
 
 class InventoryMovement(Base):

@@ -372,3 +372,17 @@ def test_profiles_fail_closed_without_authentication(client: Any) -> None:
     response = client.get("/api/v1/users/me")
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
+
+
+@pytest.mark.anyio
+async def test_farmer_reads_their_profile_creating_it_once(
+    service: ProfileService, repository: Any, actor: Actor
+) -> None:
+    repository.get_roles = AsyncMock(return_value={"farmer"})
+    repository.get_farmer_profile = AsyncMock(return_value=None)
+    created = await service.get_farmer(actor)
+    assert isinstance(created, FarmerProfile)
+    repository.add.assert_called_once()
+    existing = FarmerProfile(user_id=actor.id, county="Nakuru")
+    repository.get_farmer_profile = AsyncMock(return_value=existing)
+    assert await service.get_farmer(actor) is existing

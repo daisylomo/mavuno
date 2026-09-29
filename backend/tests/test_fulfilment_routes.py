@@ -15,19 +15,35 @@ from mavuno.fulfilment.schemas import FulfilmentTransition, FulfilmentUpdate
 async def test_fulfilment_routes_delegate_to_service(monkeypatch: pytest.MonkeyPatch) -> None:
     actor = AuthenticatedUser(uuid4(), "buyer@example.test", None, frozenset({"buyer"}), 0)
     order_id = uuid4()
+    farmer_id = uuid4()
     service = MagicMock()
     service.get = AsyncMock(return_value="stored")
+    service.parts = AsyncMock(return_value=["part"])
     service.update = AsyncMock(return_value="updated")
     service.transition = AsyncMock(return_value="transitioned")
     monkeypatch.setattr(routes, "FulfilmentService", lambda *_args: service)
     session = MagicMock()
+    request = MagicMock()
 
-    fetched: Any = await routes.get_fulfilment(order_id, actor, session)
+    fetched: Any = await routes.get_fulfilment(order_id, actor, session, request, farmer_id)
+    parts: Any = await routes.list_fulfilment_parts(order_id, actor, session, request)
     updated: Any = await routes.update_fulfilment(
-        order_id, FulfilmentUpdate(coordination_notes="Call first"), actor, session
+        order_id, FulfilmentUpdate(coordination_notes="Call first"), actor, session, request
     )
     transitioned: Any = await routes.transition_fulfilment(
-        order_id, FulfilmentTransition(status="scheduled", expected_version=1), actor, session
+        order_id,
+        FulfilmentTransition(status="scheduled", expected_version=1),
+        actor,
+        session,
+        request,
+        farmer_id,
     )
 
-    assert (fetched, updated, transitioned) == ("stored", "updated", "transitioned")
+    assert (fetched, parts, updated, transitioned) == (
+        "stored",
+        ["part"],
+        "updated",
+        "transitioned",
+    )
+    service.get.assert_awaited_once_with(actor, order_id, farmer_id)
+    service.transition.assert_awaited_once()

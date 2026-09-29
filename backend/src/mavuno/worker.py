@@ -7,6 +7,7 @@ from contextlib import suppress
 from datetime import timedelta
 from uuid import UUID
 
+from mavuno.commerce.refunds import RefundService
 from mavuno.commerce.repository import CommerceRepository
 from mavuno.commerce.service import CheckoutService, PaymentService, _now
 from mavuno.core.config import Settings, get_settings
@@ -67,8 +68,12 @@ async def process_batch(database: Database, settings: Settings) -> int:
                 continue
             try:
                 if job.job_type == "payment_status_query":
-                    await PaymentService(repository, settings).reconcile(
-                        UUID(str(job.payload["payment_id"]))
+                    await PaymentService(
+                        repository, settings, catalog_cache=catalog_cache
+                    ).reconcile(UUID(str(job.payload["payment_id"])))
+                elif job.job_type == "payment_refund":
+                    await RefundService(repository, settings).process(
+                        UUID(str(job.payload["refund_id"]))
                     )
                 elif job.job_type == "order_expire":
                     await CheckoutService(repository, settings, catalog_cache).expire(

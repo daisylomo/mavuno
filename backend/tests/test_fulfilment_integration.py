@@ -150,7 +150,7 @@ async def cleanup(
 
 
 @pytest.mark.anyio
-async def test_fulfilment_lifecycle_permissions_history_and_unique_order() -> None:
+async def test_fulfilment_lifecycle_permissions_history_and_unique_farmer_part() -> None:
     assert TEST_DATABASE_URL is not None
     database = Database(Settings(environment="test", database_url=SecretStr(TEST_DATABASE_URL)))
     current_order, buyer_id, farmer_id, product_id, listing_id = await seed(database)
@@ -213,6 +213,7 @@ async def test_fulfilment_lifecycle_permissions_history_and_unique_order() -> No
                 Fulfilment(
                     id=uuid4(),
                     order_id=current_order.id,
+                    farmer_id=farmer_id,
                     method="pickup",
                     status="pending",
                     location_label="Farm",

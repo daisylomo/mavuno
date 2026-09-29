@@ -1,25 +1,31 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mavuno.db.models import (
     Address,
     Cart,
     CartItem,
+    Fulfilment,
     Listing,
     Order,
     OrderItem,
     OutboxJob,
     Payment,
+    PaymentEvent,
+    PaymentRefund,
     Product,
     Profile,
     User,
 )
+
+IN_FLIGHT_PAYMENT_STATES = ("created", "pending_customer", "processing")
 
 
 class CommerceRepository:
@@ -120,7 +126,9 @@ class CommerceRepository:
                     .outerjoin(Address, Address.id == Order.delivery_address_id)
                     .where(
                         OrderItem.farmer_id == farmer_id,
-                        Order.status.in_(("paid", "fulfilment", "completed")),
+                        Order.status.in_(
+                            ("pending_payment", "paid", "fulfilment", "completed", "cancelled")
+                        ),
                     )
                     .order_by(Order.created_at.desc(), Order.id.desc())
                     .limit(100)
@@ -201,3 +209,94 @@ class CommerceRepository:
             job.attempts += 1
         await self.session.commit()
         return jobs
+
+    async def success_callback(self, payment_id: UUID) -> PaymentEvent | None:
+        """The latest successful STK callback, which carries the receipt and amount."""
+        return cast(
+            PaymentEvent | None,
+            await self.session.scalar(
+                select(PaymentEvent)
+                .where(
+                    PaymentEvent.payment_id == payment_id,
+                    PaymentEvent.direction == "callback",
+                    PaymentEvent.event_type == "succeeded",
+                )
+                .order_by(PaymentEvent.created_at.desc())
+                .limit(1)
+            ),
+        )
+
+    async def in_flight_payment(
+        self, order_id: UUID, *, since: datetime, exclude: UUID | None = None
+    ) -> Payment | None:
+        """A prompt sent after ``since`` that the buyer may still be answering."""
+        query = select(Payment).where(
+            Payment.order_id == order_id,
+            Payment.state.in_(IN_FLIGHT_PAYMENT_STATES),
+            Payment.created_at >= since,
+        )
+        if exclude is not None:
+            query = query.where(Payment.id != exclude)
+        return cast(
+            Payment | None,
+            await self.session.scalar(query.order_by(Payment.created_at.desc()).limit(1)),
+        )
+
+    async def succeeded_payment(self, order_id: UUID) -> Payment | None:
+        return cast(
+            Payment | None,
+            await self.session.scalar(
+                select(Payment)
+                .where(Payment.order_id == order_id, Payment.state == "succeeded")
+                .order_by(Payment.created_at)
+                .limit(1)
+            ),
+        )
+
+    async def order_refunds(self, order_id: UUID) -> list[PaymentRefund]:
+        return list(
+            await self.session.scalars(
+                select(PaymentRefund)
+                .where(PaymentRefund.order_id == order_id)
+                .order_by(PaymentRefund.created_at, PaymentRefund.id)
+            )
+        )
+
+    async def refunded_total(self, payment_id: UUID) -> Decimal:
+        value = await self.session.scalar(
+            select(func.coalesce(func.sum(PaymentRefund.amount), 0)).where(
+                PaymentRefund.payment_id == payment_id,
+                PaymentRefund.state != "failed",
+            )
+        )
+        return Decimal(str(value or 0))
+
+    async def refund(self, refund_id: UUID, *, lock: bool = False) -> PaymentRefund | None:
+        query = select(PaymentRefund).where(PaymentRefund.id == refund_id)
+        if lock:
+            query = query.with_for_update()
+        return cast(PaymentRefund | None, await self.session.scalar(query))
+
+    async def refund_by_provider_ref(self, provider_ref: str) -> PaymentRefund | None:
+        return cast(
+            PaymentRefund | None,
+            await self.session.scalar(
+                select(PaymentRefund).where(PaymentRefund.provider_ref == provider_ref)
+            ),
+        )
+
+    async def refunds_by_state(self, states: tuple[str, ...]) -> list[PaymentRefund]:
+        return list(
+            await self.session.scalars(
+                select(PaymentRefund)
+                .where(PaymentRefund.state.in_(states))
+                .order_by(PaymentRefund.created_at)
+                .limit(200)
+            )
+        )
+
+    async def order_fulfilments(self, order_id: UUID, *, lock: bool = False) -> list[Fulfilment]:
+        query = select(Fulfilment).where(Fulfilment.order_id == order_id)
+        if lock:
+            query = query.with_for_update()
+        return list(await self.session.scalars(query.order_by(Fulfilment.farmer_id)))

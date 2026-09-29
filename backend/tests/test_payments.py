@@ -24,6 +24,7 @@ from mavuno.payments.provider import (
     InitiationResult,
     PaymentProviderError,
     ProviderStatus,
+    ReversalResult,
 )
 
 
@@ -212,8 +213,8 @@ class FakeProvider:
         assert self.status is not None
         return self.status
 
-    async def reverse(self, transaction_ref: str, amount: Decimal, reason: str) -> str:
-        return "reversal-1"
+    async def reverse(self, transaction_ref: str, amount: Decimal, reason: str) -> ReversalResult:
+        return ReversalResult("reversal-1", True)
 
 
 @pytest.fixture
@@ -270,7 +271,8 @@ async def test_payment_initiation_is_idempotent(repository: Any, buyer: Authenti
     assert payment.state == "pending_customer"
     assert payment.provider_request_ref == "checkout-1"
     assert payment.payer_phone_e164 == "+254712345678"
-    assert repository.add.call_count == 2
+    # The payment plus three scheduled status checks while the prompt is open.
+    assert repository.add.call_count == 4
 
     repository.existing_payment = AsyncMock(return_value=payment)
     same = await service.initiate(
@@ -531,8 +533,8 @@ def test_reconciliation_discrepancy_reasons(repository: Any) -> None:
                 "Success",
             ),
         )
-        == "transaction_reference_missing"
-    )
+        is None
+    ), "the status query confirms success; the receipt may arrive later by callback"
 
 
 def test_payment_configuration_fails_closed() -> None:

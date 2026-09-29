@@ -38,8 +38,18 @@ class FulfilmentRepository:
             )
         )
 
-    async def fulfilment(self, order_id: UUID, *, lock: bool = False) -> Fulfilment | None:
+    async def parts(self, order_id: UUID, lock: bool = False) -> list[Fulfilment]:
         query = select(Fulfilment).where(Fulfilment.order_id == order_id)
+        if lock:
+            query = query.with_for_update()
+        return list(await self.session.scalars(query.order_by(Fulfilment.farmer_id)))
+
+    async def part(
+        self, order_id: UUID, farmer_id: UUID, *, lock: bool = False
+    ) -> Fulfilment | None:
+        query = select(Fulfilment).where(
+            Fulfilment.order_id == order_id, Fulfilment.farmer_id == farmer_id
+        )
         if lock:
             query = query.with_for_update()
         return cast(Fulfilment | None, await self.session.scalar(query))

@@ -88,7 +88,7 @@ async def test_worker_processes_payment_and_expiration_jobs(
     payment_service.reconcile = AsyncMock()
     checkout_service = MagicMock()
     checkout_service.expire = AsyncMock()
-    monkeypatch.setattr(worker, "PaymentService", lambda *_args: payment_service)
+    monkeypatch.setattr(worker, "PaymentService", lambda *_args, **_kwargs: payment_service)
     monkeypatch.setattr(worker, "CheckoutService", lambda *_args: checkout_service)
 
     claim_session = MagicMock()
@@ -120,7 +120,7 @@ async def test_worker_retries_then_dead_letters_provider_failures(
     monkeypatch.setattr(worker, "CommerceRepository", lambda _session: next(repositories))
     payment_service = MagicMock()
     payment_service.reconcile = AsyncMock(side_effect=PaymentProviderError("temporarily offline"))
-    monkeypatch.setattr(worker, "PaymentService", lambda *_args: payment_service)
+    monkeypatch.setattr(worker, "PaymentService", lambda *_args, **_kwargs: payment_service)
 
     claim_session = MagicMock()
     work_session = MagicMock()

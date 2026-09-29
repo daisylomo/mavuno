@@ -46,6 +46,16 @@ class ProfileService:
         await self.repository.refresh(profile)
         return profile
 
+    async def get_farmer(self, user: ProfileActor) -> FarmerProfile:
+        await self._require_role(user.id, "farmer")
+        profile = await self.repository.get_farmer_profile(user.id)
+        if profile is None:
+            profile = FarmerProfile(user_id=user.id)
+            self.repository.add(profile)
+            await self.repository.commit()
+            await self.repository.refresh(profile)
+        return profile
+
     async def update_farmer(
         self, user: ProfileActor, payload: FarmerProfileUpdate
     ) -> FarmerProfile:

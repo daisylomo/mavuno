@@ -14,7 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.mysql import BINARY, DATETIME, INTEGER, JSON, TEXT, VARBINARY
+from sqlalchemy.dialects.mysql import BINARY, DATETIME, INTEGER, JSON, SMALLINT, TEXT, VARBINARY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mavuno.db.base import Base, TimestampMixin, UUIDBinary
@@ -89,10 +89,20 @@ class FarmerProfile(TimestampMixin, Base):
     verification_status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default="unverified"
     )
+    locality: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    farming_practices: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    farm_size_acres: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    farming_since_year: Mapped[int | None] = mapped_column(SMALLINT(unsigned=True), nullable=True)
+    offers_pickup: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
+    offers_delivery: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+    delivery_radius_km: Mapped[int | None] = mapped_column(SMALLINT(unsigned=True), nullable=True)
     __table_args__ = (
         CheckConstraint(
             "verification_status IN ('unverified', 'pending', 'verified', 'rejected')",
             name="verification_status_allowed",
+        ),
+        CheckConstraint(
+            "farm_size_acres IS NULL OR farm_size_acres > 0", name="farm_size_positive"
         ),
     )
 

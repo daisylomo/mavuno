@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     daraja_callback_token: SecretStr | None = Field(default=None, min_length=32)
     daraja_request_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     daraja_retry_limit: int = Field(default=3, ge=0, le=10)
+    # Transaction reversal (refunds). The security credential is the initiator password
+    # encrypted with Safaricom's public certificate, as issued on the Daraja portal. Without
+    # these, refunds are recorded as needing an operator instead of being reversed automatically.
+    daraja_initiator_name: str | None = None
+    daraja_security_credential: SecretStr | None = None
+    # A buyer whose M-PESA prompt failed or was dismissed keeps the stock only this long to retry.
+    payment_retry_grace_minutes: int = Field(default=5, ge=1, le=60)
+    # An order is not expired while a prompt sent this recently may still be answered.
+    payment_inflight_grace_seconds: int = Field(default=180, ge=30, le=900)
+    listing_image_max_bytes: int = Field(default=1_500_000, ge=50_000, le=8_000_000)
     bank_provider_name: str | None = None
     bank_base_url: AnyHttpUrl | None = None
     bank_client_id: SecretStr | None = None

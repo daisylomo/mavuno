@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hmac
 from collections.abc import Iterable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +12,8 @@ from sqlalchemy.exc import IntegrityError
 from mavuno.api.errors import ApiError
 from mavuno.auth.context import AuthenticatedUser
 from mavuno.auth.normalization import normalize_phone
+from mavuno.commerce import inventory
+from mavuno.commerce.refunds import RefundService
 from mavuno.commerce.repository import CommerceRepository
 from mavuno.commerce.schemas import (
     CartItemResponse,
@@ -18,6 +21,7 @@ from mavuno.commerce.schemas import (
     OrderItemResponse,
     OrderResponse,
     PaymentInitiateRequest,
+    RefundResponse,
 )
 from mavuno.core.config import Settings
 from mavuno.core.performance import CatalogCache
@@ -43,9 +47,23 @@ from mavuno.payments.provider import (
     ProviderStatus,
 )
 
+FINAL_PAYMENT_STATES = frozenset({"succeeded", "reversed"})
+# Fulfilment states in which a buyer can still call the whole order off.
+CANCELLABLE_FULFILMENT_STATES = frozenset({"pending", "scheduled", "cancelled"})
+
 
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def payable_total(subtotal: Decimal) -> Decimal:
+    """The amount charged for an order.
+
+    M-PESA only accepts whole shillings. Fractional quantities (1.5 kg) or prices can produce a
+    fractional subtotal, so the charge is rounded *down*: a buyer never pays more than the
+    listed prices, and the difference is under one shilling.
+    """
+    return subtotal.quantize(Decimal("1"), rounding=ROUND_FLOOR)
 
 
 class CartService:
@@ -184,6 +202,18 @@ class CheckoutService:
                 )
             locked[item.listing_id] = listing
 
+        expected_subtotal = sum(
+            (locked[item.listing_id].price_amount * item.quantity for item in items),
+            Decimal("0"),
+        )
+        if payable_total(expected_subtotal) < 1:
+            await self.repository.rollback()
+            raise ApiError(
+                status_code=409,
+                code="order_total_too_small",
+                message="M-PESA payments must be at least KES 1",
+            )
+
         order = Order(
             id=uuid4(),
             buyer_id=user.id,
@@ -239,7 +269,7 @@ class CheckoutService:
                 )
             )
         order.subtotal_amount = subtotal
-        order.total_amount = subtotal
+        order.total_amount = payable_total(subtotal)
         self.repository.add(
             OrderStatusHistory(
                 id=uuid4(),
@@ -250,18 +280,7 @@ class CheckoutService:
                 reason="Checkout created",
             )
         )
-        self.repository.add(
-            OutboxJob(
-                id=uuid4(),
-                job_type="order_expire",
-                dedupe_key=f"order-expire:{order.id}",
-                payload={"order_id": str(order.id)},
-                status="pending",
-                attempts=0,
-                max_attempts=3,
-                available_at=order.reservation_expires_at,
-            )
-        )
+        self.repository.add(self._expiry_job(order, f"order-expire:{order.id}"))
         cart.status = "converted"
         try:
             await self.repository.commit()
@@ -285,6 +304,7 @@ class CheckoutService:
 
     async def response(self, order: Order) -> OrderResponse:
         items = await self.repository.order_items(order.id)
+        refunds = await self.repository.order_refunds(order.id)
         return OrderResponse(
             id=order.id,
             buyer_id=order.buyer_id,
@@ -308,52 +328,138 @@ class CheckoutService:
                 )
                 for item in items
             ],
+            refunds=[RefundResponse.model_validate(refund) for refund in refunds],
         )
 
     async def expire(self, order_id: UUID) -> None:
         order = await self.repository.order(order_id, lock=True)
-        if (
-            order is None
-            or order.status != "pending_payment"
-            or order.reservation_expires_at > _now()
-        ):
+        now = _now()
+        if order is None or order.status != "pending_payment" or order.reservation_expires_at > now:
             return
-        items = await self.repository.order_items(order.id)
-        for item in sorted(items, key=lambda value: value.listing_id.bytes):
-            listing = await self.repository.listing(item.listing_id, lock=True)
-            if listing is None:
-                raise RuntimeError("Reserved listing is missing")
-            listing.available_quantity += item.quantity
-            listing.version += 1
-            if listing.status == "sold_out":
-                listing.status = "active"
+        in_flight = await self.repository.in_flight_payment(
+            order.id, since=now - timedelta(seconds=self.settings.payment_inflight_grace_seconds)
+        )
+        if in_flight is not None:
+            # The buyer may be typing their M-PESA PIN right now. Hold the stock a little longer
+            # and check the payment, instead of releasing stock that is about to be paid for.
+            assert in_flight.created_at is not None
+            retry_at = in_flight.created_at + timedelta(
+                seconds=self.settings.payment_inflight_grace_seconds
+            )
             self.repository.add(
-                InventoryMovement(
-                    id=uuid4(),
-                    listing_id=listing.id,
-                    actor_user_id=order.buyer_id,
-                    movement_type="release",
-                    quantity_delta=item.quantity,
-                    resulting_quantity=listing.available_quantity,
-                    reason="Payment reservation expired",
-                    reference_type="order",
-                    reference_id=order.id,
+                self._expiry_job(
+                    order, f"order-expire:{order.id}:{in_flight.id}", available_at=retry_at
                 )
             )
-        order.status = "expired"
+            self.repository.add(
+                PaymentService.status_query_job(
+                    in_flight.id, f"payment-query:{in_flight.id}:expiry", now, self.settings
+                )
+            )
+            await self.repository.commit()
+            return
+        items = await self.repository.order_items(order.id)
+        changed = await inventory.release(
+            self.repository,
+            items,
+            order_id=order.id,
+            actor_user_id=order.buyer_id,
+            reason="Payment reservation expired",
+        )
+        self._set_status(order, "expired", None, "Payment reservation expired")
+        await self.repository.commit()
+        await self._invalidate_listings(changed)
+
+    async def cancel(self, user: AuthenticatedUser, order_id: UUID, reason: str | None) -> Order:
+        """Buyer calls off an order before any farmer has handed anything over."""
+        order = await self.repository.order(order_id, lock=True)
+        if order is None or (order.buyer_id != user.id and not user.has_role("administrator")):
+            raise ApiError(status_code=404, code="order_not_found", message="Order was not found")
+        if order.status in {"cancelled", "expired", "refunded"}:
+            return order
+        now = _now()
+        if order.status == "pending_payment":
+            if await self.repository.in_flight_payment(
+                order.id,
+                since=now - timedelta(seconds=self.settings.payment_inflight_grace_seconds),
+            ):
+                raise ApiError(
+                    status_code=409,
+                    code="payment_in_progress",
+                    message="An M-PESA prompt is still open. Wait for it to finish or expire.",
+                )
+        elif order.status in {"paid", "fulfilment"}:
+            parts = await self.repository.order_fulfilments(order.id, lock=True)
+            if any(part.status not in CANCELLABLE_FULFILMENT_STATES for part in parts):
+                raise ApiError(
+                    status_code=409,
+                    code="order_not_cancellable",
+                    message="A farmer has already prepared or handed over part of this order",
+                )
+            for part in parts:
+                part.status = "cancelled"
+                part.version += 1
+        else:
+            raise ApiError(
+                status_code=409,
+                code="order_not_cancellable",
+                message="Completed orders cannot be cancelled",
+            )
+        previous = order.status
+        items = await self.repository.order_items(order.id)
+        changed = await inventory.release(
+            self.repository,
+            items,
+            order_id=order.id,
+            actor_user_id=user.id,
+            reason="Order cancelled by buyer",
+        )
+        self._set_status(order, "cancelled", user.id, reason or "Cancelled by buyer")
+        if previous != "pending_payment":
+            payment = await self.repository.succeeded_payment(order.id)
+            if payment is not None:
+                await RefundService(self.repository, self.settings).request(
+                    payment,
+                    amount=payment.amount,
+                    reason="order_cancelled",
+                    dedupe_key=f"refund:{order.id}:cancel",
+                )
+        await self.repository.commit()
+        await self.repository.refresh(order)
+        await self._invalidate_listings(changed)
+        return order
+
+    def _set_status(
+        self, order: Order, status: str, actor_user_id: UUID | None, reason: str
+    ) -> None:
+        previous = order.status
+        order.status = status
         order.version += 1
         self.repository.add(
             OrderStatusHistory(
                 id=uuid4(),
                 order_id=order.id,
-                actor_user_id=None,
-                previous_status="pending_payment",
-                new_status="expired",
-                reason="Payment reservation expired",
+                actor_user_id=actor_user_id,
+                previous_status=previous,
+                new_status=status,
+                reason=reason[:255],
             )
         )
-        await self.repository.commit()
-        await self._invalidate_listings({item.listing_id for item in items})
+
+    @staticmethod
+    def _expiry_job(
+        order: Order, dedupe_key: str, available_at: datetime | None = None
+    ) -> OutboxJob:
+        return OutboxJob(
+            id=uuid4(),
+            job_type="order_expire",
+            dedupe_key=dedupe_key[:160],
+            payload={"order_id": str(order.id)},
+            status="pending",
+            attempts=0,
+            max_attempts=3,
+            available_at=available_at or order.reservation_expires_at,
+        )
 
     async def _invalidate_listings(self, listing_ids: Iterable[UUID]) -> None:
         if self.catalog_cache is None:
@@ -368,10 +474,12 @@ class PaymentService:
         repository: CommerceRepository,
         settings: Settings,
         provider: PaymentProvider | None = None,
+        catalog_cache: CatalogCache | None = None,
     ) -> None:
         self.repository = repository
         self.settings = settings
         self.provider = provider
+        self.catalog_cache = catalog_cache
 
     def provider_for(self, rail: str) -> PaymentProvider:
         if self.provider is not None:
@@ -379,6 +487,21 @@ class PaymentService:
         if rail == "mpesa":
             return DarajaProvider(self.settings)
         return UnconfiguredBankProvider()
+
+    @staticmethod
+    def status_query_job(
+        payment_id: UUID, dedupe_key: str, available_at: datetime, settings: Settings
+    ) -> OutboxJob:
+        return OutboxJob(
+            id=uuid4(),
+            job_type="payment_status_query",
+            dedupe_key=dedupe_key[:160],
+            payload={"payment_id": str(payment_id)},
+            status="pending",
+            attempts=0,
+            max_attempts=max(1, settings.daraja_retry_limit),
+            available_at=available_at,
+        )
 
     async def initiate(
         self, user: AuthenticatedUser, payload: PaymentInitiateRequest, idempotency_key: str
@@ -434,6 +557,7 @@ class PaymentService:
             provider = self.provider_for(payload.rail)
             result = await provider.initiate(request=self._initiation_request(payment))
         except PaymentProviderError as exc:
+            payment.state = "failed"
             payment.failure_code = "provider_unavailable"
             payment.failure_message = str(exc)[:255]
             await self.repository.commit()
@@ -448,28 +572,51 @@ class PaymentService:
         payment.state = "pending_customer"
         payment.failure_code = None
         payment.failure_message = None
-        self.repository.add(
-            OutboxJob(
-                id=uuid4(),
-                job_type="payment_status_query",
-                dedupe_key=f"payment-query:{payment.id}:0",
-                payload={"payment_id": str(payment.id)},
-                status="pending",
-                attempts=0,
-                max_attempts=max(1, self.settings.daraja_retry_limit),
-                available_at=_now() + timedelta(seconds=30),
+        now = _now()
+        # Callbacks can be lost, and a sleeping host may miss them, so the payment is also
+        # checked on a schedule while the prompt is open.
+        for offset in (30, 75, 150):
+            self.repository.add(
+                self.status_query_job(
+                    payment.id,
+                    f"payment-query:{payment.id}:{offset}",
+                    now + timedelta(seconds=offset),
+                    self.settings,
+                )
             )
-        )
         await self.repository.commit()
         await self.repository.refresh(payment)
         return payment
 
-    async def accept_callback(self, token: str, payload: dict[str, object]) -> None:
-        expected = self.settings.daraja_callback_token
-        if expected is None or not hmac.compare_digest(token, expected.get_secret_value()):
+    async def refresh(self, user: AuthenticatedUser, payment_id: UUID) -> Payment:
+        """Buyer-triggered status check, so the app never depends on the worker being awake."""
+        payment = await self.repository.payment(payment_id)
+        order = None if payment is None else await self.repository.order(payment.order_id)
+        if payment is None or order is None or order.buyer_id != user.id:
             raise ApiError(
-                status_code=404, code="webhook_not_found", message="Webhook was not found"
+                status_code=404, code="payment_not_found", message="Payment was not found"
             )
+        if (
+            self.settings.payments_enabled
+            and payment.provider_request_ref is not None
+            and payment.state in {"pending_customer", "processing"}
+        ):
+            try:
+                await self.reconcile(payment.id)
+            except PaymentProviderError as exc:
+                await self.repository.rollback()
+                raise ApiError(
+                    status_code=503,
+                    code="payment_provider_unavailable",
+                    message="M-PESA could not be reached. Try again shortly.",
+                ) from exc
+        refreshed = await self.repository.payment(payment_id)
+        assert refreshed is not None
+        await self.repository.refresh(refreshed)
+        return refreshed
+
+    async def accept_callback(self, token: str, payload: dict[str, object]) -> None:
+        self._check_token(token)
         provider: PaymentProvider | None = None
         try:
             provider = self.provider_for("mpesa")
@@ -490,6 +637,13 @@ class PaymentService:
                 code="payment_callback_unmatched",
                 message="Callback accepted for reconciliation",
             )
+        if (
+            payment.state == "succeeded"
+            and payment.provider_transaction_ref is None
+            and event.transaction_ref is not None
+        ):
+            # Confirmed earlier by the status query alone; record the receipt now.
+            payment.provider_transaction_ref = event.transaction_ref
         self.repository.add(
             PaymentEvent(
                 id=uuid4(),
@@ -503,15 +657,11 @@ class PaymentService:
             )
         )
         self.repository.add(
-            OutboxJob(
-                id=uuid4(),
-                job_type="payment_status_query",
-                dedupe_key=f"payment-callback:{event.provider_event_ref}",
-                payload={"payment_id": str(payment.id)},
-                status="pending",
-                attempts=0,
-                max_attempts=max(1, self.settings.daraja_retry_limit),
-                available_at=_now(),
+            self.status_query_job(
+                payment.id,
+                f"payment-callback:{event.provider_event_ref}",
+                _now(),
+                self.settings,
             )
         )
         try:
@@ -519,12 +669,24 @@ class PaymentService:
         except IntegrityError:
             await self.repository.rollback()
 
+    async def accept_reversal_result(self, token: str, payload: dict[str, object]) -> None:
+        self._check_token(token)
+        try:
+            reference, succeeded, description = DarajaProvider.parse_reversal_result(payload)
+        except PaymentProviderError as exc:
+            raise ApiError(
+                status_code=422, code="malformed_payment_callback", message="Callback is malformed"
+            ) from exc
+        await RefundService(self.repository, self.settings).reversal_result(
+            reference, succeeded, description
+        )
+
     async def reconcile(self, payment_id: UUID) -> None:
         payment = await self.repository.payment(payment_id)
         if (
             payment is None
             or payment.provider_request_ref is None
-            or payment.state in {"succeeded", "reversed"}
+            or payment.state in FINAL_PAYMENT_STATES
         ):
             return
         provider: PaymentProvider | None = None
@@ -534,8 +696,10 @@ class PaymentService:
         finally:
             await self._close_provider(provider)
         payment = await self.repository.payment(payment_id, lock=True)
-        if payment is None or payment.state in {"succeeded", "reversed"}:
+        if payment is None or payment.state in FINAL_PAYMENT_STATES:
             return
+        if status.outcome == "succeeded":
+            status = await self._with_callback_evidence(payment, status)
         discrepancy = self._discrepancy(payment, status)
         self.repository.add(
             PaymentReconciliation(
@@ -545,36 +709,125 @@ class PaymentService:
                 reported_amount=status.amount,
                 currency=status.currency,
                 provider_settlement_ref=status.transaction_ref,
-                state="matched" if discrepancy is None else "discrepancy",
+                state=self._reconciliation_state(status, discrepancy),
                 discrepancy_reason=discrepancy,
             )
         )
+        changed: set[UUID] = set()
         if status.outcome == "succeeded" and discrepancy is None:
-            order = await self.repository.order(payment.order_id, lock=True)
-            if order is None:
-                raise RuntimeError("Payment order is missing")
             payment.state = "succeeded"
             payment.provider_transaction_ref = status.transaction_ref
-            order.status = "paid"
-            order.paid_at = _now()
-            order.version += 1
-            self.repository.add(
-                OrderStatusHistory(
-                    id=uuid4(),
-                    order_id=order.id,
-                    actor_user_id=None,
-                    previous_status="pending_payment",
-                    new_status="paid",
-                    reason="Verified provider status",
-                )
-            )
+            payment.failure_code = None
+            payment.failure_message = None
+            changed = await self._settle(payment)
         elif status.outcome in {"failed", "cancelled", "expired", "reversed"}:
             payment.state = status.outcome
             payment.failure_code = status.result_code
             payment.failure_message = status.result_description
+            await self._shorten_reservation(payment)
+        elif status.outcome == "succeeded":
+            payment.state = "processing"
+            payment.failure_code = "reconciliation_discrepancy"
+            payment.failure_message = discrepancy
         else:
             payment.state = "processing"
         await self.repository.commit()
+        await self._invalidate_listings(changed)
+
+    async def _with_callback_evidence(
+        self, payment: Payment, status: ProviderStatus
+    ) -> ProviderStatus:
+        """Fill in what Daraja's status query leaves out from the STK callback.
+
+        The query confirms that *this* STK request, whose amount the merchant set, completed.
+        It does not return the amount or the M-PESA receipt; the success callback does.
+        """
+        if status.amount is not None and status.transaction_ref is not None:
+            return status
+        event = await self.repository.success_callback(payment.id)
+        payload = event.payload_redacted if event is not None else {}
+        amount = status.amount
+        if amount is None and payload.get("Amount") not in (None, ""):
+            amount = Decimal(str(payload["Amount"]))
+        receipt = status.transaction_ref
+        if receipt is None and payload.get("MpesaReceiptNumber"):
+            receipt = str(payload["MpesaReceiptNumber"])
+        return replace(status, amount=amount, transaction_ref=receipt)
+
+    async def _settle(self, payment: Payment) -> set[UUID]:
+        order = await self.repository.order(payment.order_id, lock=True)
+        if order is None:
+            raise RuntimeError("Payment order is missing")
+        if order.status == "pending_payment":
+            self._mark_paid(order, "pending_payment", "Verified provider status")
+            return set()
+        refunds = RefundService(self.repository, self.settings)
+        if order.status == "expired" and order.paid_at is None:
+            # The buyer paid after the reservation lapsed and the stock was released. Only
+            # take the order if all of it is still available; otherwise return the money.
+            changed = await inventory.reserve_again(
+                self.repository,
+                await self.repository.order_items(order.id),
+                order_id=order.id,
+                actor_user_id=order.buyer_id,
+                reason="Late payment verified",
+            )
+            if changed is not None:
+                self._mark_paid(order, "expired", "Late payment verified; stock reserved again")
+                return changed
+            await refunds.request(
+                payment,
+                amount=payment.amount,
+                reason="late_payment_stock_unavailable",
+                dedupe_key=f"refund:{payment.id}:late",
+            )
+            return set()
+        reason = "order_cancelled" if order.status == "cancelled" else "duplicate_payment"
+        await refunds.request(
+            payment,
+            amount=payment.amount,
+            reason=reason,
+            dedupe_key=f"refund:{payment.id}:{reason}",
+        )
+        return set()
+
+    def _mark_paid(self, order: Order, previous: str, reason: str) -> None:
+        order.status = "paid"
+        order.paid_at = _now()
+        order.version += 1
+        self.repository.add(
+            OrderStatusHistory(
+                id=uuid4(),
+                order_id=order.id,
+                actor_user_id=None,
+                previous_status=previous,
+                new_status="paid",
+                reason=reason,
+            )
+        )
+
+    async def _shorten_reservation(self, payment: Payment) -> None:
+        """A failed or dismissed prompt should not hold farmers' stock for the full window."""
+        order = await self.repository.order(payment.order_id, lock=True)
+        if order is None or order.status != "pending_payment":
+            return
+        now = _now()
+        if await self.repository.in_flight_payment(
+            order.id,
+            since=now - timedelta(seconds=self.settings.payment_inflight_grace_seconds),
+            exclude=payment.id,
+        ):
+            return
+        deadline = now + timedelta(minutes=self.settings.payment_retry_grace_minutes)
+        if deadline >= order.reservation_expires_at:
+            return
+        order.reservation_expires_at = deadline
+        order.version += 1
+        self.repository.add(
+            CheckoutService._expiry_job(
+                order, f"order-expire:{order.id}:retry:{payment.id}", available_at=deadline
+            )
+        )
 
     def _initiation_request(self, payment: Payment) -> InitiationRequest:
         if payment.payer_phone_e164 is None:
@@ -590,15 +843,39 @@ class PaymentService:
     def _discrepancy(self, payment: Payment, status: ProviderStatus) -> str | None:
         if status.outcome != "succeeded":
             return None
-        if status.amount != payment.amount or status.currency != payment.currency:
+        if status.currency != payment.currency:
+            return "amount_or_currency_mismatch"
+        if status.amount is not None and status.amount != payment.amount:
             return "amount_or_currency_mismatch"
         if status.payer_phone_e164 and status.payer_phone_e164 != payment.payer_phone_e164:
             return "payer_phone_mismatch"
         if status.merchant_account and status.merchant_account != self.settings.daraja_shortcode:
             return "merchant_account_mismatch"
-        if not status.transaction_ref:
-            return "transaction_reference_missing"
         return None
+
+    @staticmethod
+    def _reconciliation_state(status: ProviderStatus, discrepancy: str | None) -> str:
+        if discrepancy is not None:
+            return "discrepancy"
+        if status.outcome != "succeeded":
+            return "matched"
+        if status.transaction_ref is None or status.amount is None:
+            # Confirmed by the status query; the receipt arrives with the callback later.
+            return "matched_query_only"
+        return "matched"
+
+    def _check_token(self, token: str) -> None:
+        expected = self.settings.daraja_callback_token
+        if expected is None or not hmac.compare_digest(token, expected.get_secret_value()):
+            raise ApiError(
+                status_code=404, code="webhook_not_found", message="Webhook was not found"
+            )
+
+    async def _invalidate_listings(self, listing_ids: Iterable[UUID]) -> None:
+        if self.catalog_cache is None:
+            return
+        for listing_id in listing_ids:
+            await self.catalog_cache.invalidate_listing(str(listing_id))
 
     @staticmethod
     async def _close_provider(provider: PaymentProvider | None) -> None:

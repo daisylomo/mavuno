@@ -59,11 +59,22 @@ class ProfileUpdate(BaseModel):
 class FarmerProfileUpdate(BaseModel):
     farm_name: Annotated[Trimmed, Field(max_length=160)] | None = None
     county: Annotated[Trimmed, Field(max_length=80)] | None = None
+    locality: Annotated[Trimmed, Field(max_length=120)] | None = None
+    # Shown to buyers as the farmer's own description, never as a certification.
+    farming_practices: Annotated[Trimmed, Field(max_length=255)] | None = None
+    farm_size_acres: Decimal | None = Field(default=None, gt=0, max_digits=8, decimal_places=2)
+    farming_since_year: int | None = Field(default=None, ge=1940, le=2100)
+    offers_pickup: bool | None = None
+    offers_delivery: bool | None = None
+    delivery_radius_km: int | None = Field(default=None, ge=1, le=500)
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> FarmerProfileUpdate:
         if not self.model_fields_set:
             raise ValueError("At least one farmer profile field is required")
+        for name in ("offers_pickup", "offers_delivery"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
         return self
 
 
@@ -74,6 +85,13 @@ class FarmerProfileResponse(BaseModel):
     farm_name: str | None
     county: str | None
     verification_status: str
+    locality: str | None = None
+    farming_practices: str | None = None
+    farm_size_acres: Decimal | None = None
+    farming_since_year: int | None = None
+    offers_pickup: bool = True
+    offers_delivery: bool = False
+    delivery_radius_km: int | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -46,6 +46,7 @@ def repository() -> Any:
     value.rollback = AsyncMock()
     value.flush = AsyncMock()
     value.refresh = AsyncMock()
+    value.farmer_facts = AsyncMock(return_value={})
     return value
 
 
