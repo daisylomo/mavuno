@@ -390,6 +390,9 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
                   </Pressable>
                 )}
               </>}
+              <Pressable accessibilityRole="button" onPress={() => { setOrder(null); setPayment(null); setFulfilment(null); }}>
+                <Text style={styles.link}>Shop for another order</Text>
+              </Pressable>
             </>}
             {!!recentOrders.length && <>
               <Text style={styles.sectionTitle}>Recent orders</Text>
