@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: mavuno-api
+    runtime: docker
+    plan: free
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    healthCheckPath: /health/ready
+    dockerCommand: /app/entrypoint.sh
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: MAVUNO_ENVIRONMENT
+        value: production
+      - key: MAVUNO_DATABASE_URL
+        sync: false
+      - key: MAVUNO_REDIS_URL
+        sync: false
+      - key: MAVUNO_AUTH_SIGNING_KEYS
+        sync: false
+      - key: MAVUNO_PUSH_TOKEN_HASH_KEY
+        generateValue: true
+      - key: MAVUNO_PUSH_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: MAVUNO_PAYMENTS_ENABLED
+        value: "false"
+      - key: MAVUNO_DARAJA_ENVIRONMENT
+        value: sandbox
+      - key: MAVUNO_DARAJA_CONSUMER_KEY
+        sync: false
+      - key: MAVUNO_DARAJA_CONSUMER_SECRET
+        sync: false
+      - key: MAVUNO_DARAJA_SHORTCODE
+        sync: false
+      - key: MAVUNO_DARAJA_PASSKEY
+        sync: false
+      - key: MAVUNO_DARAJA_CALLBACK_BASE_URL
+        sync: false
+      - key: MAVUNO_DARAJA_CALLBACK_TOKEN
+        sync: false

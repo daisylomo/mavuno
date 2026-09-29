@@ -1,0 +1,16 @@
+aiomysql<1.0,>=0.3.2
+alembic<2.0,>=1.20.0
+argon2-cffi<26.0,>=25.1.0
+cryptography<51.0,>=50.0.0
+email-validator<3.0,>=2.3.0
+fastapi<1.0,>=0.115.12
+httpx2<3.0,>=2.13.0
+phonenumbers<10.0,>=9.0.15
+pydantic-settings<3.0,>=2.9.1
+pyjwt<3.0,>=2.10.1
+pymysql<1.2,>=1.1.2
+pyyaml<7.0,>=6.0.2
+redis<7.0,>=6.4.0
+sqlalchemy[asyncio]<2.1,>=2.0.54
+supervisor<5.0,>=4.2.5
+uvicorn<1.0,>=0.34.2

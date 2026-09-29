@@ -6,6 +6,8 @@
 # Expo
 **/.expo/
 **/dist/
+**/dist-test/
+**/dist-test-android/
 **/.web-build/
 **/expo-env.d.ts
 
@@ -31,6 +33,7 @@ yarn-error.*
 **/*.pem
 
 # local env files
+**/.env
 **/.env*.local
 
 # typescript
@@ -41,3 +44,17 @@ yarn-error.*
 # generated native folders
 **/ios
 **/android
+
+# Local implementation plan
+/backend/PLAN.md
+
+# Python tooling
+**/.venv/
+**/.uv-cache/
+**/.uv-python/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
