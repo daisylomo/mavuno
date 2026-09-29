@@ -13,8 +13,6 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Colors } from '@/constants/theme';
 import {
   farmerService,
@@ -22,7 +20,7 @@ import {
   MAX_PHOTO_BYTES,
   type PhotoUpload,
 } from '@/services/farmer-service';
-import { base64Bytes, HARVEST_OPTIONS } from '@/components/listing-details';
+import { base64Bytes, HARVEST_OPTIONS, splitDataUrl } from '@/components/listing-details';
 import { ProduceCategory, ProduceUnit } from '@/types/farmer';
 import { apiBaseUrl } from '@/components/customer-catalog-api';
 
@@ -77,62 +75,64 @@ export default function NewListingScreen() {
     });
   }, []);
 
-  // The farmer's own photo is resized on the device (to about 1280px, JPEG) so it uploads
+  // The farmer's own photo is resized in the browser (to at most 1280px, JPEG) so it uploads
   // quickly on mobile data and stays under the server's limit.
-  const preparePhoto = async (uri: string) => {
+  const preparePhoto = (file: File) => {
     setPreparingPhoto(true);
-    try {
-      const rendered = await ImageManipulator.manipulate(uri).resize({ width: 1280 }).renderAsync();
-      const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG, base64: true });
-      rendered.release();
-      if (!saved.base64) throw new Error('The photo could not be read.');
-      if (base64Bytes(saved.base64) > MAX_PHOTO_BYTES) {
-        throw new Error('That photo is still too large after resizing. Try cropping it.');
-      }
-      setPhoto({ contentType: 'image/jpeg', base64: saved.base64 });
-      setImageSource({ uri: saved.uri });
-      setImageUrlValue(null);
-      setError('');
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The photo could not be prepared.');
-    } finally {
+    const reader = new FileReader();
+    reader.onerror = () => {
       setPreparingPhoto(false);
-    }
-  };
-
-  const pickPhoto = async (fromCamera: boolean) => {
-    const permission = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setError(fromCamera
-        ? 'Allow camera access in your phone settings to take a photo.'
-        : 'Allow photo access in your phone settings to choose a photo.');
-      return;
-    }
-    const options: ImagePicker.ImagePickerOptions = {
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 1,
+      setError('The photo could not be read.');
     };
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync(options)
-      : await ImagePicker.launchImageLibraryAsync(options);
-    if (result.canceled || !result.assets.length) return;
-    await preparePhoto(result.assets[0].uri);
+    reader.onload = () => {
+      const image = new window.Image();
+      image.onerror = () => {
+        setPreparingPhoto(false);
+        setError('That file is not a photo we can read. Choose a JPG, PNG or WebP image.');
+      };
+      image.onload = () => {
+        const scale = Math.min(1, 1280 / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(image.width * scale);
+        canvas.height = Math.round(image.height * scale);
+        canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const upload = splitDataUrl(canvas.toDataURL('image/jpeg', 0.75));
+        setPreparingPhoto(false);
+        if (!upload) {
+          setError('The photo could not be prepared.');
+        } else if (base64Bytes(upload.base64) > MAX_PHOTO_BYTES) {
+          setError('That photo is still too large after resizing. Try a smaller one.');
+        } else {
+          setPhoto(upload);
+          setImageSource({ uri: `data:${upload.contentType};base64,${upload.base64}` });
+          setImageUrlValue(null);
+          setError('');
+        }
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handlePickImage = () => {
     if (Platform.OS === 'web') {
-      pickPhoto(false);
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/jpeg,image/png,image/webp';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (file) preparePhoto(file);
+      };
+      input.click();
       return;
     }
-    Alert.alert('Add a photo of your produce', 'Buyers trust listings with the farmer\'s own photo.', [
-      { text: 'Take photo', onPress: () => { pickPhoto(true); } },
-      { text: 'Choose from gallery', onPress: () => { pickPhoto(false); } },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    // Taking or choosing a photo on the phone needs the expo-image-picker native module,
+    // which is not in this build yet. Until then, farmers can publish from the web app or
+    // pick an illustration, which buyers are told is not the farmer's own photo.
+    Alert.alert(
+      'Photo upload',
+      'Adding your own photo from the phone is coming in the next app update. For now, open Mavuno in a web browser to add a photo, or pick an illustration below.',
+    );
   };
 
   const handleSave = async () => {
