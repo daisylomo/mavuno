@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -26,6 +28,17 @@ const CATEGORIES: { label: ProduceCategory; icon: string }[] = [
 
 const UNITS: ProduceUnit[] = ['kg', 'crate', 'bunch', 'bag', 'piece'];
 
+const PRODUCE_PRESETS = [
+  { key: 'tomatoes', label: 'Tomatoes', source: require('@/assets/products/tomatoes.jpg'), icon: '🍅' },
+  { key: 'spinach', label: 'Sukuma / Spinach', source: require('@/assets/products/spinach.jpg'), icon: '🥬' },
+  { key: 'avocados', label: 'Hass Avocados', source: require('@/assets/products/avocados.jpg'), icon: '🥑' },
+  { key: 'carrots', label: 'Fresh Carrots', source: require('@/assets/products/carrots.jpg'), icon: '🥕' },
+  { key: 'mangoes', label: 'Sweet Mangoes', source: require('@/assets/products/mangoes.jpg'), icon: '🥭' },
+  { key: 'bananas', label: 'Bananas', source: require('@/assets/products/bananas.jpg'), icon: '🍌' },
+  { key: 'potatoes', label: 'Potatoes', source: require('@/assets/products/potatoes.jpg'), icon: '🥔' },
+  { key: 'honey', label: 'Local Honey', source: require('@/assets/products/honey.jpg'), icon: '🍯' },
+];
+
 export default function NewListingScreen() {
   const router = useRouter();
 
@@ -36,6 +49,8 @@ export default function NewListingScreen() {
   const [unit, setUnit] = useState<ProduceUnit>('kg');
   const [harvestDate, setHarvestDate] = useState('Harvested Today');
   const [description, setDescription] = useState('');
+  const [imageSource, setImageSource] = useState<any | null>(null);
+  const [imageUrlValue, setImageUrlValue] = useState<string | null>(null);
   const [products, setProducts] = useState<Array<{ id: string; name: string; default_unit: ProduceUnit }>>([]);
   const [productId, setProductId] = useState('');
   const [saving, setSaving] = useState(false);
@@ -51,6 +66,34 @@ export default function NewListingScreen() {
       setError(cause instanceof Error ? cause.message : 'Could not load produce types.');
     });
   }, []);
+
+  const handlePickImage = () => {
+    if (Platform.OS === 'web') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e: any) => {
+        const file = e.target?.files?.[0];
+        if (file) {
+          if (file.size > 5 * 1024 * 1024) {
+            setError('Image size exceeds 5MB. Please choose a smaller photo.');
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const result = event.target?.result as string;
+            setImageSource({ uri: result });
+            setImageUrlValue(result);
+            setError('');
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      input.click();
+    } else {
+      Alert.alert('Upload Photo', 'Photo uploading works directly on web browsers.');
+    }
+  };
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -83,6 +126,7 @@ export default function NewListingScreen() {
         price: numPrice,
         quantity: numQuantity,
         unit,
+        imageUrl: imageUrlValue || undefined,
         harvestDate: harvestDate.trim() || 'Fresh Harvest',
         description: description.trim() || 'Organically grown fresh harvest.',
         status: numQuantity <= 10 ? 'low_stock' : 'active',
@@ -144,6 +188,61 @@ export default function NewListingScreen() {
             value={title}
             onChangeText={setTitle}
           />
+        </View>
+
+        {/* Produce Photo Section */}
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Produce Photo (Optional)</Text>
+          {imageSource ? (
+            <View style={styles.previewContainer}>
+              <Image source={imageSource} style={styles.previewImage} />
+              <View style={styles.previewOverlay}>
+                <TouchableOpacity
+                  style={styles.previewActionBtn}
+                  onPress={handlePickImage}
+                  activeOpacity={0.8}>
+                  <Text style={styles.previewActionText}>🔄 Change</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.previewActionBtn, styles.previewRemoveBtn]}
+                  onPress={() => {
+                    setImageSource(null);
+                    setImageUrlValue(null);
+                  }}
+                  activeOpacity={0.8}>
+                  <Text style={styles.previewRemoveText}>✕ Remove</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View>
+              <TouchableOpacity
+                style={styles.uploadCard}
+                onPress={handlePickImage}
+                activeOpacity={0.8}>
+                <Text style={styles.uploadCardIcon}>📷</Text>
+                <Text style={styles.uploadCardTitle}>Tap to Upload Produce Photo</Text>
+                <Text style={styles.uploadCardSub}>PNG, JPG, or WebP from your device</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.presetHeading}>Or pick a harvest sample:</Text>
+              <View style={styles.presetChipRow}>
+                {PRODUCE_PRESETS.map((preset) => (
+                  <TouchableOpacity
+                    key={preset.label}
+                    style={styles.presetChip}
+                    onPress={() => {
+                      setImageSource(preset.source);
+                      setImageUrlValue(`preset:${preset.key}`);
+                    }}
+                    activeOpacity={0.75}>
+                    <Text style={styles.presetChipIcon}>{preset.icon}</Text>
+                    <Text style={styles.presetChipText}>{preset.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Category Selector */}
@@ -463,5 +562,100 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  uploadCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  uploadCardIcon: {
+    fontSize: 32,
+    marginBottom: 6,
+  },
+  uploadCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.brandGreen,
+  },
+  uploadCardSub: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  previewContainer: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    position: 'relative',
+  },
+  previewImage: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'cover',
+  },
+  previewOverlay: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    padding: 10,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+  },
+  previewActionBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  previewActionText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  previewRemoveBtn: {
+    backgroundColor: '#DC2626',
+  },
+  previewRemoveText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  presetHeading: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 8,
+  },
+  presetChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  presetChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  presetChipIcon: {
+    fontSize: 14,
+  },
+  presetChipText: {
+    fontSize: 12,
+    color: Colors.text,
+    fontWeight: '500',
   },
 });

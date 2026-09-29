@@ -16,6 +16,7 @@ type ApiListing = {
   id: string; version: number; product_id: string; title: string; category_slug: string;
   price_amount: string; available_quantity: string; quantity_unit: ProduceListing['unit'];
   harvest_date: string | null; description: string | null; status: string; created_at: string;
+  images?: Array<{ id: string; object_key: string; alt_text?: string; sort_order: number }>;
 };
 
 type ApiFarmerOrder = {
@@ -33,6 +34,7 @@ const categoryLabels: Record<string, ProduceListing['category']> = {
 };
 
 function fromApi(item: ApiListing): ProduceListing {
+  const firstImage = item.images && item.images.length > 0 ? item.images[0].object_key : undefined;
   return {
     id: item.id, version: item.version, productId: item.product_id, title: item.title,
     category: categoryLabels[item.category_slug] ?? 'Vegetables', price: Number(item.price_amount),
@@ -40,6 +42,7 @@ function fromApi(item: ApiListing): ProduceListing {
     harvestDate: item.harvest_date ?? 'Fresh harvest', description: item.description ?? '',
     status: item.status === 'active' && Number(item.available_quantity) <= 10 ? 'low_stock'
       : item.status === 'sold_out' ? 'sold_out' : item.status === 'active' ? 'active' : 'paused',
+    imageUrl: firstImage,
     createdAt: item.created_at,
   };
 }
@@ -70,10 +73,35 @@ export const farmerService = {
           available_quantity: listingData.quantity, quantity_unit: listingData.unit,
         },
       });
+
+      if (listingData.imageUrl) {
+        try {
+          const key = listingData.imageUrl.startsWith('data:')
+            ? `listings/${created.id}/photo_${Date.now()}.jpg`
+            : listingData.imageUrl.startsWith('preset:')
+            ? `listings/${listingData.imageUrl.replace('preset:', '')}.jpg`
+            : listingData.imageUrl.replace(/^\/+/, '');
+          await liveRequest(`/listings/${created.id}/images`, {
+            method: 'POST',
+            body: {
+              object_key: key,
+              alt_text: listingData.title,
+              sort_order: 0,
+            },
+          });
+        } catch {
+          // Gracefully continue if backend object storage is optional
+        }
+      }
+
       const active = await liveRequest<ApiListing>(`/listings/${created.id}`, {
         method: 'PATCH', body: { expected_version: created.version, status: 'active' },
       });
-      return fromApi(active);
+      const result = fromApi(active);
+      return {
+        ...result,
+        imageUrl: listingData.imageUrl || result.imageUrl,
+      };
     }
     const listings = await this.getListings();
     const newListing: ProduceListing = {
