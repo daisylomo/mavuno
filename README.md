@@ -88,6 +88,18 @@ collected. An APK for this environment must set both
 `EXPO_PUBLIC_MAVUNO_PAYMENTS_SANDBOX=1` at build time. Production payments
 require production Daraja credentials and a separate end-to-end validation.
 
+### Android APK CI
+
+`.github/workflows/android-apk.yml` checks TypeScript and frontend tests on
+pull requests. On changes to the frontend on `main`, or a manual run, it
+generates the Android project and builds a test APK on GitHub's runner. The
+APK is available in the Actions run for 14 days. Pushing a `v*` tag also
+attaches it to the corresponding GitHub Release. CI uses the hosted API and
+sandbox M-Pesa settings above. Update the workflow and `frontend/eas.json`
+before building for another environment. The CI APK uses Expo's generated
+debug signing key; use the `release-apk` EAS profile or a private release
+keystore for a production-signed APK.
+
 The backend provides image *object keys*, not public image URLs. Until public
 image hosting exists, live cards explicitly show "Photo unavailable".
 If listing images are published at a public base URL, set

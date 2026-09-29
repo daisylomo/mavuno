@@ -1,0 +1,101 @@
+name: Android APK
+
+on:
+  pull_request:
+    paths:
+      - frontend/**
+      - .github/workflows/android-apk.yml
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - frontend/**
+      - .github/workflows/android-apk.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: node --experimental-strip-types --test tests/*.test.mjs
+
+  build:
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      MAVUNO_RELEASE_BUILD: '1'
+      EXPO_PUBLIC_MAVUNO_API_URL: https://mavuno-api.onrender.com/api/v1
+      EXPO_PUBLIC_MAVUNO_PAYMENTS_SANDBOX: '1'
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --no-install
+      - name: Build test APK
+        run: cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers=2
+      - name: Check APK
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -tqq "$APK"
+          unzip -Z1 "$APK" | grep '^classes.dex$'
+          mkdir -p dist-ci
+          cp "$APK" "dist-ci/mavuno-test-${GITHUB_SHA:0:12}.apk"
+          sha256sum dist-ci/*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mavuno-android-apk-${{ github.sha }}
+          path: frontend/dist-ci/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mavuno-android-apk-${{ github.sha }}
+          path: dist
+      - name: Attach APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.apk --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.apk --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+          fi

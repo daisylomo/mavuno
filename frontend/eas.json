@@ -14,6 +14,10 @@
     "release-apk": {
       "distribution": "internal",
       "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_MAVUNO_API_URL": "https://mavuno-api.onrender.com/api/v1",
+        "EXPO_PUBLIC_MAVUNO_PAYMENTS_SANDBOX": "1"
+      },
       "android": { "buildType": "apk" }
     },
     "production": {
