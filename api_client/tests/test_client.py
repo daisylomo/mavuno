@@ -3,7 +3,7 @@ from api_client.client import MavunoClient
 from api_client.models.auth import LoginRequest
 from api_client.models.catalog import ListingFilterRequest
 
-BASE_URL = "http://127.0.0.1:8000/api/v1"
+from api_client.tests.conftest import BASE_URL
 
 
 @pytest.fixture(scope="session")

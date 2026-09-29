@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mavuno Admin</title><link rel="stylesheet" href="/admin/portal.css"><script src="/admin/portal.js" defer></script></head>
+<body><main>
+<header><div><p class="eyebrow">MAVUNO · MARKETPLACE OPERATIONS</p><h1>Admin portal</h1></div><button id="logout" hidden>Sign out</button></header>
+<p id="message" role="status" aria-live="polite">Sign in with your administrator account.</p>
+<section id="signin"><h2>Administrator sign in</h2><form id="login"><label>Email or phone<input name="identifier" autocomplete="username" required maxlength="320"></label><label>Password<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label><button>Sign in</button></form><p>Access is restricted to accounts provisioned with the administrator role.</p></section>
+<div id="workspace" hidden>
+<div class="toolbar"><h2>Marketplace</h2><button id="refresh">Refresh</button></div>
+<section><h2>Categories</h2><div id="categories"></div><form id="category"><h3>Add category</h3><label>Name<input name="name" required minlength="2" maxlength="120"></label><label>Slug<input name="slug" required pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="120" placeholder="fresh-vegetables"></label><button>Add category</button></form></section>
+<section><h2>Produce types</h2><div id="products"></div><form id="product"><h3>Add produce type</h3><label>Category<select name="category_id" id="category-select" required></select></label><label>Name<input name="name" required minlength="2" maxlength="160"></label><label>Slug<input name="slug" required pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="160" placeholder="tomatoes"></label><label>Default unit<select name="default_unit"><option>kg</option><option>g</option><option>crate</option><option>piece</option><option>bunch</option><option>bag</option></select></label><button>Add produce type</button></form></section>
+<section><h2>Refunds requiring attention</h2><p>Record a refund only after money has been returned through the payment provider. This portal records the reference; it does not send money.</p><div id="refunds"></div></section>
+</div>
+</main></body></html>

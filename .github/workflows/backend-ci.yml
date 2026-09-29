@@ -2,10 +2,12 @@ name: Backend CI
 
 on:
   pull_request:
-    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+    paths: ["backend/**", "api_client/**", ".github/workflows/backend-ci.yml"]
   push:
-    branches: [backend]
-    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+    branches: [main, backend]
+    paths: ["backend/**", "api_client/**", ".github/workflows/backend-ci.yml"]
+  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -50,6 +52,19 @@ jobs:
         env:
           MAVUNO_DATABASE_URL: ${{ env.MAVUNO_TEST_DATABASE_URL }}
       - run: uv run pytest
+      - name: Test Python API client against the running backend
+        env:
+          MAVUNO_DATABASE_URL: ${{ env.MAVUNO_TEST_DATABASE_URL }}
+          MAVUNO_API_BASE_URL: http://127.0.0.1:8000/api/v1
+          MAVUNO_AUTH_REGISTER_RATE_LIMIT: '1000'
+          MAVUNO_AUTH_LOGIN_RATE_LIMIT: '1000'
+          PYTHONPATH: src:..
+        run: |
+          uv run uvicorn mavuno.main:app --app-dir src --host 127.0.0.1 --port 8000 > /tmp/mavuno-api.log 2>&1 &
+          API_PID=$!
+          trap 'kill "$API_PID"' EXIT
+          curl --fail --retry 15 --retry-connrefused --retry-delay 1 http://127.0.0.1:8000/health/ready
+          uv run pytest ../api_client/tests --no-cov
       - run: uv run python scripts/export_openapi.py /tmp/openapi.json
       - run: diff -u tests/contracts/openapi.json /tmp/openapi.json
       - run: docker build --tag mavuno-backend:${{ github.sha }} .

@@ -25,6 +25,7 @@ class BaseService:
                 url=url,
                 params=params,
                 json=json_payload,
+                timeout=(10, 65),
             )
 
             if res.status_code >= 400:
