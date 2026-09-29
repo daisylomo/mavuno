@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from mavuno.core.config import get_settings
 from mavuno.db import Base
 from mavuno.db import models as models
+from mavuno.db.connection import database_connection_options
 
 config = context.config
 
@@ -20,9 +21,10 @@ settings = get_settings()
 if settings.database_url is None:
     raise RuntimeError("MAVUNO_DATABASE_URL is required to run database migrations")
 
-config.set_main_option(
-    "sqlalchemy.url", settings.database_url.get_secret_value().replace("%", "%%")
+connection_url, connect_args = database_connection_options(
+    settings.database_url.get_secret_value()
 )
+config.set_main_option("sqlalchemy.url", connection_url.replace("%", "%%"))
 target_metadata = Base.metadata
 
 # Import side effect registers every model on Base.metadata for autogeneration.
@@ -54,6 +56,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:

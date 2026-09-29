@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import (
 
 from mavuno.core.config import Settings
 from mavuno.core.performance import CatalogCache, PerformanceMetrics, record_query
+from mavuno.db.connection import database_connection_options
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,12 @@ class Database:
         if settings.database_url is None:
             raise ValueError("MAVUNO_DATABASE_URL is required to configure the database")
 
+        connection_url, connect_args = database_connection_options(
+            settings.database_url.get_secret_value()
+        )
         self.engine = engine or create_async_engine(
-            settings.database_url.get_secret_value(),
+            connection_url,
+            connect_args=connect_args,
             pool_pre_ping=True,
             pool_size=settings.database_pool_size,
             max_overflow=settings.database_max_overflow,

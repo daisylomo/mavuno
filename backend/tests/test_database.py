@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ssl
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from mavuno.core.config import Settings
 from mavuno.db import Base, Database
 from mavuno.db.base import UUIDBinary
+from mavuno.db.connection import database_connection_options
 from mavuno.db.models import identity as identity_models
 
 
@@ -35,6 +37,26 @@ def engine_mock() -> tuple[MagicMock, AsyncMock]:
 def test_database_url_is_required() -> None:
     with pytest.raises(ValueError, match="MAVUNO_DATABASE_URL"):
         Database(Settings(environment="test"))
+
+
+def test_aiomysql_receives_ssl_context_instead_of_url_options(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ca_paths: list[str] = []
+
+    def create_context(*, cafile: str) -> ssl.SSLContext:
+        ca_paths.append(cafile)
+        return context
+
+    monkeypatch.setattr("mavuno.db.connection.ssl.create_default_context", create_context)
+    url, connect_args = database_connection_options(
+        "mysql+aiomysql://user:secret@database/mavuno?ssl_ca=/etc/secrets/aiven-ca.pem"
+    )
+
+    assert url == "mysql+aiomysql://user:secret@database/mavuno"
+    assert connect_args == {"ssl": context}
+    assert ca_paths == ["/etc/secrets/aiven-ca.pem"]
 
 
 @pytest.mark.anyio
