@@ -52,12 +52,34 @@ zero are offered. The farmer form has more categories than the customer filters,
 so `Grains & Cereals` and `Dairy & Poultry` are shown under **Pantry**, and
 `Tubers & Roots` under **Vegetables**.
 
-Farmers cannot attach their own photograph yet, so each listing borrows the
-closest of the bundled CC0 pictures, matched on what the farmer typed in the
-title — English or Swahili, so both "Sukuma Wiki" and "Spinach" land on the
-leafy-greens picture, and "Ndizi" on the bananas. When nothing matches, the
-listing falls back to a picture for its category. These are illustrations, not
-the farmer's actual harvest, and every such card says so underneath the image.
+In the offline demo, each farmer listing borrows the closest of the bundled CC0
+pictures, matched on what the farmer typed in the title — English or Swahili, so
+both "Sukuma Wiki" and "Spinach" land on the leafy-greens picture, and "Ndizi" on
+the bananas. When nothing matches, the listing falls back to a picture for its
+category. These are illustrations, not the farmer's actual harvest, and every
+such card says so underneath the image.
+
+With the live API, farmers add their own photo when listing produce: they take one
+with the camera or choose one from the gallery (on the web, from a file). The app
+resizes it to about 1280 px before uploading, and buyers see that photo. A farmer
+without a photo can pick a bundled illustration instead; buyers are told it is not
+the farmer's own photo. Listings never get a description the farmer did not write,
+and the harvest option the farmer picks is sent as a harvest date.
+
+Every live listing shows who is selling it: the farmer's name, area, verification
+status, completed orders and whether they offer pickup or delivery. Tapping through
+opens the farmer's profile with their bio, farm details and everything else they
+have on sale. Farmers fill these in under **Profile → What buyers see about your farm**.
+
+Buyers see how long their produce is reserved while paying, the page checks the
+M-Pesa payment by itself while the prompt is open, and an unpaid order can be
+cancelled to release the stock straight away. In an order with produce from
+several farmers, each farmer confirms and hands over only their own items, and
+the buyer confirms receipt per farmer.
+
+The hosted API sleeps when idle. The sign-in screen starts waking it as soon as it
+opens, requests wait up to a minute, and a gateway error while it starts is retried
+once, with a message that explains the delay instead of blaming the connection.
 
 Without an API URL, the demo cart is saved on the device and trimmed against
 the demo catalogue. With an API URL, signed-in buyers use the backend cart,

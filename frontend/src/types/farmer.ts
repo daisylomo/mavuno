@@ -20,7 +20,14 @@ export interface ProduceListing {
   createdAt: string;
 }
 
-export type OrderStatus = 'pending' | 'accepted' | 'ready_for_pickup' | 'dispatched' | 'completed' | 'cancelled';
+export type OrderStatus =
+  | 'awaiting_payment'
+  | 'pending'
+  | 'accepted'
+  | 'ready_for_pickup'
+  | 'dispatched'
+  | 'completed'
+  | 'cancelled';
 
 export interface OrderItem {
   listingId: string;
@@ -45,6 +52,21 @@ export interface FarmerOrder {
   fulfilmentStatus?: string;
   fulfilmentVersion?: number;
   fulfilmentMethod?: 'pickup' | 'delivery';
+  /** While awaiting payment: when the reserved stock returns to the listing. */
+  reservationExpiresAt?: string;
+  /** Other farmers with items in the same order; each hands over separately. */
+  otherFarmers?: number;
+}
+
+/** What buyers see about the farmer; edited on the profile screen. */
+export interface FarmerPublicDetails {
+  farmName: string;
+  county: string;
+  locality: string;
+  farmingPractices: string;
+  offersPickup: boolean;
+  offersDelivery: boolean;
+  deliveryRadiusKm: string;
 }
 
 export interface FarmerStats {

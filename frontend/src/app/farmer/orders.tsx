@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -11,6 +12,7 @@ import { Colors } from '@/constants/theme';
 import { farmerService } from '@/services/farmer-service';
 import { FarmerOrder, OrderStatus } from '@/types/farmer';
 import { isBackendConfigured } from '@/services/auth-api';
+import { reservationDeadline } from '@/components/listing-details';
 
 export default function FarmerOrdersScreen() {
   const [orders, setOrders] = useState<FarmerOrder[]>([]);
@@ -49,8 +51,27 @@ export default function FarmerOrdersScreen() {
     }
   };
 
+  const handleWithdraw = (order: FarmerOrder) => {
+    const withdraw = async () => {
+      try {
+        await farmerService.withdrawFromOrder(order, 'Farmer can no longer supply these items');
+        await loadOrders();
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : 'Could not withdraw from the order.');
+      }
+    };
+    Alert.alert(
+      'Cannot supply this order?',
+      'Your items go back on sale and the buyer is refunded for them. Other farmers in the order are not affected.',
+      [{ text: 'Keep order', style: 'cancel' }, { text: 'Withdraw my items', style: 'destructive', onPress: withdraw }],
+    );
+  };
+
   const filteredOrders = orders.filter((o) => {
     if (selectedFilter === 'all') return true;
+    if (selectedFilter === 'pending' && isBackendConfigured()) {
+      return ['pending', 'awaiting_payment'].includes(o.status);
+    }
     if (selectedFilter === 'accepted' && isBackendConfigured()) {
       return ['accepted', 'ready_for_pickup', 'dispatched'].includes(o.status);
     }
@@ -60,6 +81,8 @@ export default function FarmerOrdersScreen() {
   const getStatusBadge = (order: FarmerOrder) => {
     const status = order.status;
     switch (status) {
+      case 'awaiting_payment':
+        return { bg: '#F1F5F9', text: '#475569', label: 'Awaiting buyer payment' };
       case 'pending':
         return { bg: '#FEF3C7', text: '#92400E', label: isBackendConfigured()
           ? order.fulfilmentStatus === 'pending' ? 'Delivery plan received' : 'Paid — awaiting delivery plan'
@@ -94,6 +117,19 @@ export default function FarmerOrdersScreen() {
             </Text>
           </View>
         </View>
+
+        {item.status === 'awaiting_payment' && !!item.reservationExpiresAt && (
+          <Text style={styles.reservationNote}>
+            Your stock is held for this buyer until {reservationDeadline(item.reservationExpiresAt) ?? 'soon'}.
+            If they do not pay by then, it goes back on sale automatically.
+          </Text>
+        )}
+        {!!item.otherFarmers && (
+          <Text style={styles.reservationNote}>
+            This order also includes produce from {item.otherFarmers} other{' '}
+            {item.otherFarmers === 1 ? 'farmer' : 'farmers'}. You only prepare and hand over your own items.
+          </Text>
+        )}
 
         {/* Customer Details */}
         <View style={styles.customerBox}>
@@ -168,6 +204,11 @@ export default function FarmerOrdersScreen() {
                   : item.fulfilmentStatus === 'scheduled' ? 'Ready for handover' : 'Mark in transit'}
               </Text>
             </TouchableOpacity>
+            {['pending', 'scheduled'].includes(item.fulfilmentStatus ?? '') && (
+              <TouchableOpacity style={[styles.actionBtn, styles.declineBtn]} onPress={() => handleWithdraw(item)}>
+                <Text style={styles.declineBtnText}>Can&apos;t supply</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
@@ -224,6 +265,14 @@ export default function FarmerOrdersScreen() {
 }
 
 const styles = StyleSheet.create({
+  reservationNote: {
+    fontSize: 12,
+    color: '#475569',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
   container: {
     flex: 1,
     backgroundColor: Colors.background,

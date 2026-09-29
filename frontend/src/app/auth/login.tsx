@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,6 +13,7 @@ import {
 import { Href, useRouter } from 'expo-router';
 import { Colors } from '../../constants/theme';
 import { userService } from '../../services/user-service';
+import { wakeServer } from '../../components/customer-catalog-api';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -21,6 +22,11 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    // The hosted API sleeps when idle; start waking it while the person types.
+    try { wakeServer(); } catch { /* an invalid API URL is reported when submitting */ }
+  }, []);
 
   const handleLogin = async () => {
     if (!identifier.trim()) {
@@ -117,6 +123,11 @@ export default function LoginScreen() {
               <Text style={styles.submitButtonText}>Log In</Text>
             )}
           </TouchableOpacity>
+          {loading && (
+            <Text style={styles.wakeHint}>
+              The first sign-in after a quiet spell can take up to a minute while the server starts.
+            </Text>
+          )}
 
           {/* Switch to Register */}
           <View style={styles.footerRow}>
@@ -132,6 +143,12 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  wakeHint: {
+    color: '#64748B',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
+  },
   keyboardContainer: {
     flex: 1,
     backgroundColor: '#F7FAF7',

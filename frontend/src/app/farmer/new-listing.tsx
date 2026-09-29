@@ -13,8 +13,16 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Colors } from '@/constants/theme';
-import { farmerService } from '@/services/farmer-service';
+import {
+  farmerService,
+  ListingPhotoError,
+  MAX_PHOTO_BYTES,
+  type PhotoUpload,
+} from '@/services/farmer-service';
+import { base64Bytes, HARVEST_OPTIONS } from '@/components/listing-details';
 import { ProduceCategory, ProduceUnit } from '@/types/farmer';
 import { apiBaseUrl } from '@/components/customer-catalog-api';
 
@@ -47,10 +55,12 @@ export default function NewListingScreen() {
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState<ProduceUnit>('kg');
-  const [harvestDate, setHarvestDate] = useState('Harvested Today');
+  const [harvestDate, setHarvestDate] = useState<string>(HARVEST_OPTIONS[0]);
   const [description, setDescription] = useState('');
   const [imageSource, setImageSource] = useState<any | null>(null);
   const [imageUrlValue, setImageUrlValue] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<PhotoUpload | null>(null);
+  const [preparingPhoto, setPreparingPhoto] = useState(false);
   const [products, setProducts] = useState<Array<{ id: string; name: string; default_unit: ProduceUnit }>>([]);
   const [productId, setProductId] = useState('');
   const [saving, setSaving] = useState(false);
@@ -67,32 +77,62 @@ export default function NewListingScreen() {
     });
   }, []);
 
+  // The farmer's own photo is resized on the device (to about 1280px, JPEG) so it uploads
+  // quickly on mobile data and stays under the server's limit.
+  const preparePhoto = async (uri: string) => {
+    setPreparingPhoto(true);
+    try {
+      const rendered = await ImageManipulator.manipulate(uri).resize({ width: 1280 }).renderAsync();
+      const saved = await rendered.saveAsync({ compress: 0.7, format: SaveFormat.JPEG, base64: true });
+      rendered.release();
+      if (!saved.base64) throw new Error('The photo could not be read.');
+      if (base64Bytes(saved.base64) > MAX_PHOTO_BYTES) {
+        throw new Error('That photo is still too large after resizing. Try cropping it.');
+      }
+      setPhoto({ contentType: 'image/jpeg', base64: saved.base64 });
+      setImageSource({ uri: saved.uri });
+      setImageUrlValue(null);
+      setError('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The photo could not be prepared.');
+    } finally {
+      setPreparingPhoto(false);
+    }
+  };
+
+  const pickPhoto = async (fromCamera: boolean) => {
+    const permission = fromCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError(fromCamera
+        ? 'Allow camera access in your phone settings to take a photo.'
+        : 'Allow photo access in your phone settings to choose a photo.');
+      return;
+    }
+    const options: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 1,
+    };
+    const result = fromCamera
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
+    if (result.canceled || !result.assets.length) return;
+    await preparePhoto(result.assets[0].uri);
+  };
+
   const handlePickImage = () => {
     if (Platform.OS === 'web') {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.onchange = (e: any) => {
-        const file = e.target?.files?.[0];
-        if (file) {
-          if (file.size > 5 * 1024 * 1024) {
-            setError('Image size exceeds 5MB. Please choose a smaller photo.');
-            return;
-          }
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const result = event.target?.result as string;
-            setImageSource({ uri: result });
-            setImageUrlValue(result);
-            setError('');
-          };
-          reader.readAsDataURL(file);
-        }
-      };
-      input.click();
-    } else {
-      Alert.alert('Upload Photo', 'Photo uploading works directly on web browsers.');
+      pickPhoto(false);
+      return;
     }
+    Alert.alert('Add a photo of your produce', 'Buyers trust listings with the farmer\'s own photo.', [
+      { text: 'Take photo', onPress: () => { pickPhoto(true); } },
+      { text: 'Choose from gallery', onPress: () => { pickPhoto(false); } },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const handleSave = async () => {
@@ -104,9 +144,13 @@ export default function NewListingScreen() {
       setError('Select a produce type before publishing.');
       return;
     }
-    const numPrice = parseFloat(price);
-    if (isNaN(numPrice) || numPrice <= 0) {
+    const numPrice = Number(price.trim());
+    if (!Number.isFinite(numPrice) || numPrice <= 0) {
       setError('Please enter a valid price per unit');
+      return;
+    }
+    if (apiBaseUrl() && !Number.isInteger(numPrice)) {
+      setError('Enter the price in whole shillings (M-PESA cannot charge cents).');
       return;
     }
     const numQuantity = parseFloat(quantity);
@@ -126,14 +170,21 @@ export default function NewListingScreen() {
         price: numPrice,
         quantity: numQuantity,
         unit,
-        imageUrl: imageUrlValue || undefined,
-        harvestDate: harvestDate.trim() || 'Fresh Harvest',
-        description: description.trim() || 'Organically grown fresh harvest.',
+        imageUrl: photo ? undefined : imageUrlValue || undefined,
+        harvestDate,
+        // Only what the farmer wrote. An empty description stays empty rather than claiming
+        // anything (such as organic growing) on the farmer's behalf.
+        description: description.trim(),
         status: numQuantity <= 10 ? 'low_stock' : 'active',
-      });
+      }, photo ?? undefined);
 
       router.back();
     } catch (err: any) {
+      if (err instanceof ListingPhotoError) {
+        Alert.alert('Listing published', err.message);
+        router.back();
+        return;
+      }
       setError(err.message || 'Failed to save listing');
       setSaving(false);
     }
@@ -208,6 +259,7 @@ export default function NewListingScreen() {
                   onPress={() => {
                     setImageSource(null);
                     setImageUrlValue(null);
+                    setPhoto(null);
                   }}
                   activeOpacity={0.8}>
                   <Text style={styles.previewRemoveText}>✕ Remove</Text>
@@ -220,12 +272,16 @@ export default function NewListingScreen() {
                 style={styles.uploadCard}
                 onPress={handlePickImage}
                 activeOpacity={0.8}>
-                <Text style={styles.uploadCardIcon}>📷</Text>
-                <Text style={styles.uploadCardTitle}>Tap to Upload Produce Photo</Text>
-                <Text style={styles.uploadCardSub}>PNG, JPG, or WebP from your device</Text>
+                {preparingPhoto ? <ActivityIndicator color={Colors.brandGreen} /> : <>
+                  <Text style={styles.uploadCardIcon}>📷</Text>
+                  <Text style={styles.uploadCardTitle}>Add a photo of your produce</Text>
+                  <Text style={styles.uploadCardSub}>Take one now or choose from your gallery</Text>
+                </>}
               </TouchableOpacity>
 
-              <Text style={styles.presetHeading}>Or pick a harvest sample:</Text>
+              <Text style={styles.presetHeading}>
+                No photo yet? Use an illustration (buyers are told it is not your own photo):
+              </Text>
               <View style={styles.presetChipRow}>
                 {PRODUCE_PRESETS.map((preset) => (
                   <TouchableOpacity
@@ -234,6 +290,7 @@ export default function NewListingScreen() {
                     onPress={() => {
                       setImageSource(preset.source);
                       setImageUrlValue(`preset:${preset.key}`);
+                      setPhoto(null);
                     }}
                     activeOpacity={0.75}>
                     <Text style={styles.presetChipIcon}>{preset.icon}</Text>
@@ -328,7 +385,7 @@ export default function NewListingScreen() {
         <View style={styles.fieldGroup}>
           <Text style={styles.fieldLabel}>Harvest Freshness</Text>
           <View style={styles.presetRow}>
-            {['Harvested Today', 'Harvested Yesterday', 'Harvesting Tomorrow'].map((preset) => {
+            {HARVEST_OPTIONS.map((preset) => {
               const isSelected = harvestDate === preset;
               return (
                 <TouchableOpacity
@@ -356,7 +413,7 @@ export default function NewListingScreen() {
           <Text style={styles.fieldLabel}>Description & Farming Notes</Text>
           <TextInput
             style={[styles.textInput, styles.textArea]}
-            placeholder="Tell buyers about how this was grown, quality, freshness, or minimum order..."
+            placeholder="Optional: how it was grown, quality, variety, minimum order..."
             placeholderTextColor="#9CA3AF"
             multiline
             numberOfLines={4}

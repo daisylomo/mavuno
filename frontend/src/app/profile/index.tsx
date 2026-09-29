@@ -5,6 +5,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -14,6 +15,8 @@ import CustomInput from '../../components/CustomInput';
 import { Colors } from '../../constants/theme';
 import { AppUser, userService } from '../../services/user-service';
 import { isBackendConfigured } from '../../services/auth-api';
+import { farmerService } from '../../services/farmer-service';
+import { FarmerPublicDetails } from '../../types/farmer';
 
 export default function ProfileSettings() {
   const router = useRouter();
@@ -25,6 +28,8 @@ export default function ProfileSettings() {
   const [location, setLocation] = useState('');
   const [loading, setLoading] = useState(true);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [farm, setFarm] = useState<FarmerPublicDetails | null>(null);
+  const [farmMessage, setFarmMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadUser() {
@@ -36,6 +41,10 @@ export default function ProfileSettings() {
           setEmail(user.email || '');
           setPhone(user.phone || '');
           setLocation(user.location || 'Nairobi, Kenya');
+          if (user.role === 'farmer' && isBackendConfigured()) {
+            farmerService.getPublicDetails().then(setFarm).catch(() => setFarmMessage(
+              'Could not load your farm details. Pull down or reopen this screen to try again.'));
+          }
         }
       } finally {
         setLoading(false);
@@ -58,6 +67,16 @@ export default function ProfileSettings() {
       }
     } catch (err: any) {
       alert(err.message || 'Failed to update profile');
+    }
+  };
+
+  const saveFarm = async () => {
+    if (!farm) return;
+    try {
+      await farmerService.savePublicDetails(farm);
+      setFarmMessage('Saved. Buyers now see these details on your listings.');
+    } catch (err: any) {
+      setFarmMessage(err.message || 'Could not save your farm details.');
     }
   };
 
@@ -154,6 +173,44 @@ export default function ProfileSettings() {
         </TouchableOpacity>
       </View>
 
+      {farm && (
+        <View style={styles.formCard}>
+          <Text style={styles.cardSectionTitle}>What buyers see about your farm</Text>
+          <Text style={styles.farmHint}>
+            These details appear next to every listing so buyers know who grew their food.
+          </Text>
+          <CustomInput label="Farm name" value={farm.farmName}
+            onChangeText={(farmName) => setFarm({ ...farm, farmName })} placeholder="e.g. Kamau Greens" />
+          <CustomInput label="Town / area" value={farm.locality}
+            onChangeText={(locality) => setFarm({ ...farm, locality })} placeholder="e.g. Limuru" />
+          <CustomInput label="County" value={farm.county}
+            onChangeText={(county) => setFarm({ ...farm, county })} placeholder="e.g. Kiambu" />
+          <CustomInput label="How you farm (in your words)" value={farm.farmingPractices}
+            onChangeText={(farmingPractices) => setFarm({ ...farm, farmingPractices })}
+            placeholder="e.g. Rain-fed, no synthetic pesticides" />
+          <Text style={styles.farmHint}>
+            Buyers are told this is your own description, not a certification. Only claim what is true.
+          </Text>
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>Buyers can collect from the farm</Text>
+            <Switch value={farm.offersPickup} onValueChange={(offersPickup) => setFarm({ ...farm, offersPickup })} />
+          </View>
+          <View style={styles.switchRow}>
+            <Text style={styles.switchLabel}>I deliver</Text>
+            <Switch value={farm.offersDelivery} onValueChange={(offersDelivery) => setFarm({ ...farm, offersDelivery })} />
+          </View>
+          {farm.offersDelivery && (
+            <CustomInput label="Delivery distance (km)" value={farm.deliveryRadiusKm} keyboardType="number-pad"
+              onChangeText={(deliveryRadiusKm) => setFarm({ ...farm, deliveryRadiusKm })} />
+          )}
+          {!!farmMessage && <Text style={styles.farmHint}>{farmMessage}</Text>}
+          <TouchableOpacity style={styles.saveButton} onPress={saveFarm}>
+            <Text style={styles.saveButtonText}>Save farm details</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {!farm && !!farmMessage && <Text style={styles.farmHint}>{farmMessage}</Text>}
+
       {/* Log Out Section */}
       <View style={styles.logoutCard}>
         <Text style={styles.logoutCardTitle}>Account Session</Text>
@@ -170,6 +227,22 @@ export default function ProfileSettings() {
 }
 
 const styles = StyleSheet.create({
+  farmHint: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginBottom: 10,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  switchLabel: {
+    fontSize: 14,
+    color: Colors.text,
+    flex: 1,
+  },
   container: {
     flexGrow: 1,
     backgroundColor: Colors.background,
