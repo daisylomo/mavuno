@@ -1,22 +1,40 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal, cast
 from uuid import UUID
 
-from sqlalchemy import Select, and_, or_, select, update
+from sqlalchemy import Select, and_, func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mavuno.catalog.pagination import ListingCursor
 from mavuno.db.models import (
+    FarmerProfile,
+    Fulfilment,
     InventoryMovement,
     Listing,
     ListingImage,
+    ListingImageContent,
+    Order,
+    OrderItem,
     ProduceCategory,
     Product,
+    Profile,
+    User,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class FarmerFacts:
+    user: User
+    profile: Profile | None
+    farmer: FarmerProfile | None
+    active_listings: int
+    completed_orders: int
+
 
 Sort = Literal["newest", "price_asc", "price_desc"]
 
@@ -192,3 +210,78 @@ class CatalogRepository:
                 .order_by(InventoryMovement.created_at.desc())
             )
         )
+
+    async def image_content(self, image_id: UUID) -> ListingImageContent | None:
+        return await self.session.get(ListingImageContent, image_id)
+
+    async def next_image_order(self, listing_id: UUID) -> int:
+        value = await self.session.scalar(
+            select(func.coalesce(func.max(ListingImage.sort_order) + 1, 0)).where(
+                ListingImage.listing_id == listing_id
+            )
+        )
+        return int(value or 0)
+
+    async def farmer_facts(self, farmer_ids: set[UUID]) -> dict[UUID, FarmerFacts]:
+        """Public facts about several farmers in three queries, for a page of listings."""
+        if not farmer_ids:
+            return {}
+        rows = (
+            await self.session.execute(
+                select(User, Profile, FarmerProfile)
+                .outerjoin(Profile, Profile.user_id == User.id)
+                .outerjoin(FarmerProfile, FarmerProfile.user_id == User.id)
+                .where(User.id.in_(farmer_ids))
+            )
+        ).all()
+        active: dict[UUID, int] = {
+            farmer_id: count
+            for farmer_id, count in (
+                await self.session.execute(
+                    select(Listing.farmer_id, func.count(Listing.id))
+                    .where(Listing.farmer_id.in_(farmer_ids), Listing.status == "active")
+                    .group_by(Listing.farmer_id)
+                )
+            ).tuples()
+        }
+        completed: dict[UUID, int] = {
+            farmer_id: count
+            for farmer_id, count in (
+                await self.session.execute(
+                    select(OrderItem.farmer_id, func.count(func.distinct(OrderItem.order_id)))
+                    .join(Order, Order.id == OrderItem.order_id)
+                    .where(OrderItem.farmer_id.in_(farmer_ids), Order.status == "completed")
+                    .group_by(OrderItem.farmer_id)
+                )
+            ).tuples()
+        }
+        return {
+            user.id: FarmerFacts(
+                user=user,
+                profile=profile,
+                farmer=farmer,
+                active_listings=int(active.get(user.id, 0)),
+                completed_orders=int(completed.get(user.id, 0)),
+            )
+            for user, profile, farmer in rows
+        }
+
+    async def farmer_categories(self, farmer_id: UUID) -> list[str]:
+        return list(
+            await self.session.scalars(
+                select(ProduceCategory.name)
+                .join(Product, Product.category_id == ProduceCategory.id)
+                .join(Listing, Listing.product_id == Product.id)
+                .where(Listing.farmer_id == farmer_id, Listing.status == "active")
+                .distinct()
+                .order_by(ProduceCategory.name)
+            )
+        )
+
+    async def farmer_cancellations(self, farmer_id: UUID) -> int:
+        value = await self.session.scalar(
+            select(func.count(Fulfilment.id)).where(
+                Fulfilment.farmer_id == farmer_id, Fulfilment.status == "cancelled"
+            )
+        )
+        return int(value or 0)

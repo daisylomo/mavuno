@@ -1,9 +1,15 @@
-import { apiBaseUrl } from '../components/customer-catalog-api.ts';
+import {
+  apiBaseUrl,
+  SERVER_TIMEOUT_MS,
+  SERVER_WAKING_MESSAGE,
+} from '../components/customer-catalog-api.ts';
 
 /** The backend rejects anything shorter (see RegisterRequest in backend/src/mavuno/auth/schemas.py). */
 export const PASSWORD_MIN_LENGTH = 10;
 
-const REQUEST_TIMEOUT_MS = 10_000;
+/** Gateway answers while a sleeping host starts; the request never reached the API. */
+const WAKING_STATUSES = new Set([502, 503, 504]);
+const WAKE_RETRY_DELAY_MS = 4_000;
 
 /** Roles used by the Expo screens. */
 export type AppRole = 'farmer' | 'customer' | 'admin';
@@ -104,28 +110,37 @@ async function request(
   path: string,
   init: { method: string; body?: unknown; accessToken?: string }
 ): Promise<unknown> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (init.body !== undefined) headers['Content-Type'] = 'application/json';
   if (init.accessToken) headers.Authorization = `Bearer ${init.accessToken}`;
 
-  let response: Response;
-  try {
-    response = await fetch(`${requireBaseUrl()}${path}`, {
-      method: init.method,
-      headers,
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('The Mavuno server took too long to respond. Please try again.');
+  async function send(): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SERVER_TIMEOUT_MS);
+    try {
+      return await fetch(`${requireBaseUrl()}${path}`, {
+        method: init.method,
+        headers,
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(SERVER_WAKING_MESSAGE);
+      }
+      throw new Error('Could not reach the Mavuno server. Check your internet connection and try again.');
+    } finally {
+      clearTimeout(timer);
     }
-    throw new Error('Could not reach the Mavuno server. Check that the backend is running.');
-  } finally {
-    clearTimeout(timer);
+  }
+
+  let response = await send();
+  if (WAKING_STATUSES.has(response.status)) {
+    // The free host answers from its gateway while the API boots. The request was not
+    // processed, so trying once more is safe even for registration.
+    await new Promise((resolve) => setTimeout(resolve, WAKE_RETRY_DELAY_MS));
+    response = await send();
+    if (WAKING_STATUSES.has(response.status)) throw new Error(SERVER_WAKING_MESSAGE);
   }
 
   let body: unknown = null;

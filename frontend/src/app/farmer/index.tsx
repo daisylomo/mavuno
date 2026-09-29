@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Platform,
   RefreshControl,
   StyleSheet,
@@ -15,6 +16,26 @@ import { Colors } from '../../constants/theme';
 import { farmerService } from '../../services/farmer-service';
 import { AppUser, userService } from '../../services/user-service';
 import { FarmerStats, ListingStatus, ProduceListing } from '../../types/farmer';
+
+const PRODUCE_IMAGES: Record<string, any> = {
+  tomatoes: require('@/assets/products/tomatoes.jpg'),
+  spinach: require('@/assets/products/spinach.jpg'),
+  mangoes: require('@/assets/products/mangoes.jpg'),
+  bananas: require('@/assets/products/bananas.jpg'),
+  carrots: require('@/assets/products/carrots.jpg'),
+  avocados: require('@/assets/products/avocados.jpg'),
+  potatoes: require('@/assets/products/potatoes.jpg'),
+  honey: require('@/assets/products/honey.jpg'),
+};
+
+const getProduceImageSource = (imageUrl?: string) => {
+  if (!imageUrl) return undefined;
+  if (imageUrl.startsWith('preset:')) {
+    const key = imageUrl.replace('preset:', '');
+    return PRODUCE_IMAGES[key] || PRODUCE_IMAGES.tomatoes;
+  }
+  return { uri: imageUrl };
+};
 
 export default function FarmerDashboard() {
   const router = useRouter();
@@ -208,6 +229,12 @@ export default function FarmerDashboard() {
       <View style={styles.produceCard}>
         {/* Top Info */}
         <View style={styles.cardHeader}>
+          {item.imageUrl ? (
+            <Image
+              source={getProduceImageSource(item.imageUrl)!}
+              style={styles.cardThumbnail}
+            />
+          ) : null}
           <View style={styles.titleContainer}>
             <Text style={styles.produceTitle}>{item.title}</Text>
             <Text style={styles.produceMeta}>
@@ -487,6 +514,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
+  },
+  cardThumbnail: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    marginRight: 10,
+    backgroundColor: '#F1F5F9',
   },
   titleContainer: {
     flex: 1,

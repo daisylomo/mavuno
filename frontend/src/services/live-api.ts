@@ -1,4 +1,4 @@
-import { apiBaseUrl } from '@/components/customer-catalog-api';
+import { apiBaseUrl, SERVER_TIMEOUT_MS, SERVER_WAKING_MESSAGE } from '@/components/customer-catalog-api';
 import { userService } from './user-service';
 
 let refreshing: Promise<string> | null = null;
@@ -20,11 +20,21 @@ export async function liveRequest<T>(path: string, options: {
     };
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
     if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
-    return fetch(`${base}${path}`, {
-      method: options.method ?? 'GET',
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SERVER_TIMEOUT_MS);
+    try {
+      return await fetch(`${base}${path}`, {
+        method: options.method ?? 'GET',
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw new Error(SERVER_WAKING_MESSAGE);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   let response: Response;
@@ -44,6 +54,7 @@ export async function liveRequest<T>(path: string, options: {
     throw error;
   }
 
+  if ([502, 503, 504].includes(response.status)) throw new Error(SERVER_WAKING_MESSAGE);
   if (response.status === 204) return undefined as T;
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {

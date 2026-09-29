@@ -33,6 +33,13 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Mavuno uses your photos so you can show buyers your own produce.",
+          "cameraPermission": "Mavuno uses the camera so you can photograph your produce for buyers."
+        }
       ]
     ],
     "experiments": {

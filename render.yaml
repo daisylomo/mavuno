@@ -38,3 +38,9 @@ services:
         sync: false
       - key: MAVUNO_DARAJA_CALLBACK_TOKEN
         sync: false
+      # Optional: automatic M-PESA reversals for refunds. Without them, refunds are listed at
+      # GET /api/v1/admin/refunds for an operator to send and record.
+      - key: MAVUNO_DARAJA_INITIATOR_NAME
+        sync: false
+      - key: MAVUNO_DARAJA_SECURITY_CREDENTIAL
+        sync: false

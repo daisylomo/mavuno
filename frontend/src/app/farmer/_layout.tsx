@@ -13,6 +13,14 @@ export default function FarmerLayout() {
     router.replace('/auth/login' as Href);
   };
 
+  const navigateBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/farmer' as Href);
+    }
+  };
+
   return <RoleGate allowedRoles={['farmer']}>
     <Stack
       screenOptions={{
@@ -61,12 +69,26 @@ export default function FarmerLayout() {
         name="new-listing"
         options={{
           title: 'Add Produce Listing',
+          headerLeft: () => (
+            <Pressable
+              onPress={navigateBack}
+              style={{ marginRight: 16, padding: 4 }}>
+              <Text style={{ color: '#fff', fontSize: 22, fontWeight: 'bold' }}>←</Text>
+            </Pressable>
+          ),
         }}
       />
       <Stack.Screen
         name="orders"
         options={{
           title: 'Customer Orders',
+          headerLeft: () => (
+            <Pressable
+              onPress={navigateBack}
+              style={{ marginRight: 16, padding: 4 }}>
+              <Text style={{ color: '#fff', fontSize: 22, fontWeight: 'bold' }}>←</Text>
+            </Pressable>
+          ),
         }}
       />
     </Stack>

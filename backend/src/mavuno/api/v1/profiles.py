@@ -60,6 +60,13 @@ async def update_profile(
     return await _service(session, request).update_profile(current_user, payload)
 
 
+@router.get("/farmer", response_model=FarmerProfileResponse)
+async def get_farmer_profile(
+    current_user: CurrentUser, session: DatabaseSession, request: Request
+) -> object:
+    return await _service(session, request).get_farmer(current_user)
+
+
 @router.patch("/farmer", response_model=FarmerProfileResponse)
 async def update_farmer_profile(
     payload: FarmerProfileUpdate,

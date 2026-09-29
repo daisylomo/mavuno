@@ -21,9 +21,7 @@ settings = get_settings()
 if settings.database_url is None:
     raise RuntimeError("MAVUNO_DATABASE_URL is required to run database migrations")
 
-connection_url, connect_args = database_connection_options(
-    settings.database_url.get_secret_value()
-)
+connection_url, connect_args = database_connection_options(settings.database_url.get_secret_value())
 config.set_main_option("sqlalchemy.url", connection_url.replace("%", "%%"))
 target_metadata = Base.metadata
 

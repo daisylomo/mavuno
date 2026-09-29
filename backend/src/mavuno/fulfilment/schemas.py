@@ -50,6 +50,8 @@ class FulfilmentHistoryResponse(BaseModel):
 class FulfilmentResponse(BaseModel):
     id: UUID
     order_id: UUID
+    # The farmer whose items this hand-over covers.
+    farmer_id: UUID
     method: str
     status: str
     location_label: str

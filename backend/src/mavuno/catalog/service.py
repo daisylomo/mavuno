@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 from decimal import Decimal
 from typing import TypeVar
 from uuid import UUID, uuid4
@@ -9,24 +12,44 @@ from sqlalchemy.exc import IntegrityError
 from mavuno.api.errors import ApiError
 from mavuno.auth.context import AuthenticatedUser
 from mavuno.catalog.pagination import decode_cursor, encode_cursor
-from mavuno.catalog.repository import CatalogRepository, Sort
+from mavuno.catalog.repository import CatalogRepository, FarmerFacts, Sort
 from mavuno.catalog.schemas import (
+    UPLOADED_IMAGE_PREFIX,
     CategoryCreate,
+    FarmerPublicProfile,
+    FarmerSummary,
     ImageCreate,
     ListingCreate,
     ListingPage,
     ListingResponse,
     ListingUpdate,
+    PhotoUpload,
     ProductCreate,
 )
-from mavuno.db.models import InventoryMovement, Listing, ListingImage, ProduceCategory, Product
+from mavuno.db.models import (
+    InventoryMovement,
+    Listing,
+    ListingImage,
+    ListingImageContent,
+    ProduceCategory,
+    Product,
+)
 
 CatalogValue = TypeVar("CatalogValue", ProduceCategory, Product)
 
 
+IMAGE_SIGNATURES = {
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/png": (b"\x89PNG\r\n\x1a\n",),
+    "image/webp": (b"RIFF",),
+}
+
+
 class CatalogService:
-    def __init__(self, repository: CatalogRepository) -> None:
+    def __init__(self, repository: CatalogRepository, max_image_bytes: int = 1_500_000) -> None:
         self.repository = repository
+        self.max_image_bytes = max_image_bytes
+        self._farmers: dict[UUID, FarmerFacts] = {}
 
     async def create_category(self, payload: CategoryCreate) -> ProduceCategory:
         if (
@@ -134,6 +157,7 @@ class CatalogService:
         )
         has_more = len(rows) > limit
         visible = rows[:limit]
+        await self._load_farmers({listing.farmer_id for listing in visible})
         items = [await self._response(listing) for listing in visible]
         next_cursor = None
         if has_more and visible:
@@ -238,6 +262,12 @@ class CatalogService:
     ) -> ListingImage:
         self._farmer(user)
         await self._owned(user, listing_id)
+        if payload.object_key.startswith(UPLOADED_IMAGE_PREFIX):
+            raise ApiError(
+                status_code=422,
+                code="uploaded_key_reserved",
+                message="Upload photo bytes through the photos endpoint",
+            )
         image = ListingImage(id=uuid4(), listing_id=listing_id, **payload.model_dump())
         try:
             self.repository.add(image)
@@ -251,6 +281,86 @@ class CatalogService:
             ) from exc
         await self.repository.refresh(image)
         return image
+
+    async def add_photo(
+        self, user: AuthenticatedUser, listing_id: UUID, payload: PhotoUpload
+    ) -> ListingImage:
+        """Store a farmer's own photograph of the produce, as uploaded from the app."""
+        self._farmer(user)
+        await self._owned(user, listing_id)
+        try:
+            content = base64.b64decode(payload.content_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ApiError(
+                status_code=422, code="invalid_photo", message="Photo data is not valid base64"
+            ) from exc
+        if not content or len(content) > self.max_image_bytes:
+            raise ApiError(
+                status_code=413,
+                code="photo_too_large",
+                message=f"Photos must be smaller than {self.max_image_bytes // 1000} KB",
+            )
+        if not content.startswith(IMAGE_SIGNATURES[payload.content_type]) or (
+            payload.content_type == "image/webp" and content[8:12] != b"WEBP"
+        ):
+            raise ApiError(
+                status_code=422,
+                code="invalid_photo",
+                message="Photo content does not match its type",
+            )
+        image_id = uuid4()
+        image = ListingImage(
+            id=image_id,
+            listing_id=listing_id,
+            object_key=f"{UPLOADED_IMAGE_PREFIX}{image_id}",
+            alt_text=payload.alt_text,
+            sort_order=await self.repository.next_image_order(listing_id),
+        )
+        self.repository.add(image)
+        await self.repository.flush()
+        self.repository.add(
+            ListingImageContent(
+                image_id=image_id,
+                content_type=payload.content_type,
+                byte_size=len(content),
+                sha256=hashlib.sha256(content).hexdigest(),
+                content=content,
+            )
+        )
+        try:
+            await self.repository.commit()
+        except IntegrityError as exc:
+            await self.repository.rollback()
+            raise ApiError(
+                status_code=409,
+                code="listing_image_conflict",
+                message="Another photo was added at the same time; try again",
+            ) from exc
+        await self.repository.refresh(image)
+        return image
+
+    async def photo(self, image_id: UUID) -> ListingImageContent:
+        content = await self.repository.image_content(image_id)
+        if content is None:
+            raise ApiError(status_code=404, code="photo_not_found", message="Photo was not found")
+        return content
+
+    async def farmer_profile(self, farmer_id: UUID) -> FarmerPublicProfile:
+        await self._load_farmers({farmer_id})
+        facts = self._farmers.get(farmer_id)
+        if facts is None or facts.user.status != "active" or facts.farmer is None:
+            raise ApiError(status_code=404, code="farmer_not_found", message="Farmer was not found")
+        summary = self._summary(facts)
+        farmer = facts.farmer
+        return FarmerPublicProfile(
+            **summary.model_dump(),
+            bio=facts.profile.bio if facts.profile else None,
+            farm_size_acres=farmer.farm_size_acres,
+            farming_since_year=farmer.farming_since_year,
+            delivery_radius_km=farmer.delivery_radius_km,
+            categories=await self.repository.farmer_categories(farmer_id),
+            cancelled_handovers=await self.repository.farmer_cancellations(farmer_id),
+        )
 
     async def delete_image(self, user: AuthenticatedUser, listing_id: UUID, image_id: UUID) -> None:
         self._farmer(user)
@@ -273,8 +383,33 @@ class CatalogService:
             )
         return listing
 
+    async def _load_farmers(self, farmer_ids: set[UUID]) -> None:
+        missing = farmer_ids - set(self._farmers)
+        if missing:
+            self._farmers.update(await self.repository.farmer_facts(missing))
+
+    @staticmethod
+    def _summary(facts: FarmerFacts) -> FarmerSummary:
+        profile, farmer = facts.profile, facts.farmer
+        return FarmerSummary(
+            id=facts.user.id,
+            display_name=profile.display_name if profile else "Mavuno farmer",
+            farm_name=farmer.farm_name if farmer else None,
+            county=farmer.county if farmer else None,
+            locality=farmer.locality if farmer else None,
+            verification_status=farmer.verification_status if farmer else "unverified",
+            member_since=facts.user.created_at,
+            active_listings=facts.active_listings,
+            completed_orders=facts.completed_orders,
+            offers_pickup=farmer.offers_pickup if farmer else True,
+            offers_delivery=farmer.offers_delivery if farmer else False,
+            farming_practices=farmer.farming_practices if farmer else None,
+        )
+
     async def _response(self, listing: Listing) -> ListingResponse:
         product, category, images = await self.repository.listing_context(listing)
+        await self._load_farmers({listing.farmer_id})
+        facts = self._farmers.get(listing.farmer_id)
         return ListingResponse(
             id=listing.id,
             farmer_id=listing.farmer_id,
@@ -295,6 +430,7 @@ class CatalogService:
             images=images,
             created_at=listing.created_at,
             updated_at=listing.updated_at,
+            farmer=self._summary(facts) if facts is not None else None,
         )
 
     async def _insert_unique(self, value: CatalogValue, code: str) -> CatalogValue:

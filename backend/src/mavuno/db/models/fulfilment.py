@@ -14,7 +14,7 @@ from mavuno.db.base import Base, TimestampMixin, UUIDBinary
 class Fulfilment(TimestampMixin, Base):
     __tablename__ = "fulfilments"
     __table_args__ = (
-        UniqueConstraint("order_id", name="uq_fulfilments_order_id"),
+        UniqueConstraint("order_id", "farmer_id", name="uq_fulfilments_order_farmer"),
         CheckConstraint("method IN ('pickup','delivery')", name="method_allowed"),
         CheckConstraint(
             "status IN ('pending','scheduled','ready_for_handover','in_transit',"
@@ -27,11 +27,16 @@ class Fulfilment(TimestampMixin, Base):
             "longitude IS NULL OR longitude BETWEEN -180 AND 180", name="longitude_range"
         ),
         Index("ix_fulfilments_status_window", "status", "window_start"),
+        Index("ix_fulfilments_farmer_status", "farmer_id", "status"),
     )
 
     id: Mapped[UUID] = mapped_column(UUIDBinary(), primary_key=True, default=uuid4)
     order_id: Mapped[UUID] = mapped_column(
         UUIDBinary(), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False
+    )
+    # Each farmer in a mixed order prepares and hands over only their own items.
+    farmer_id: Mapped[UUID] = mapped_column(
+        UUIDBinary(), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
     )
     method: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False, server_default="pending")

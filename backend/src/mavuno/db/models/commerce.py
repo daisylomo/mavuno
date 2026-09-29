@@ -194,6 +194,40 @@ class PaymentReconciliation(Base):
     )
 
 
+class PaymentRefund(TimestampMixin, Base):
+    """Money owed back to a buyer: a cancelled order, a late or duplicate payment."""
+
+    __tablename__ = "payment_refunds"
+    __table_args__ = (
+        CheckConstraint("amount > 0 AND currency = 'KES'", name="amount_currency_valid"),
+        CheckConstraint(
+            "state IN ('pending','submitted','completed','failed','manual_required')",
+            name="state_allowed",
+        ),
+        UniqueConstraint("dedupe_key", name="uq_payment_refunds_dedupe_key"),
+        Index("ix_payment_refunds_payment", "payment_id"),
+        Index("ix_payment_refunds_state_updated", "state", "updated_at"),
+    )
+    id: Mapped[UUID] = mapped_column(UUIDBinary(), primary_key=True, default=uuid4)
+    payment_id: Mapped[UUID] = mapped_column(
+        UUIDBinary(), ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        UUIDBinary(), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False
+    )
+    farmer_id: Mapped[UUID | None] = mapped_column(
+        UUIDBinary(), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default="KES")
+    reason: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(String(24), nullable=False, server_default="pending")
+    dedupe_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    provider_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    operator_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6), nullable=True)
+
+
 class OutboxJob(TimestampMixin, Base):
     __tablename__ = "outbox_jobs"
     __table_args__ = (

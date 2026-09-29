@@ -88,6 +88,9 @@ export function farmerListingToProduct(
   farmerLabel: string = DEFAULT_FARMER_LABEL,
 ): DemoProduct {
   const category = CATEGORY_MAP[listing.category] ?? 'Pantry';
+  const isPreset = !!listing.imageUrl && listing.imageUrl.startsWith('preset:');
+  const presetKey = isPreset ? (listing.imageUrl!.replace('preset:', '') as ImageKey) : null;
+
   return {
     id: listing.id,
     name: listing.title,
@@ -97,9 +100,9 @@ export function farmerListingToProduct(
     farmer: farmerLabel,
     description: listing.description,
     stock: listing.quantity,
-    imageUri: listing.imageUrl ?? null,
-    imageKey: pickImageKey(listing.title, category),
-    illustrated: !listing.imageUrl,
+    imageUri: isPreset ? null : listing.imageUrl ?? null,
+    imageKey: presetKey || pickImageKey(listing.title, category),
+    illustrated: !listing.imageUrl || isPreset,
   };
 }
 

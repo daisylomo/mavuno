@@ -7,16 +7,22 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Request, Response, status
 
 from mavuno.api.dependencies import CurrentUser, DatabaseSession
+from mavuno.api.errors import ApiError
+from mavuno.auth.context import AuthenticatedUser
+from mavuno.commerce.refunds import RefundService
 from mavuno.commerce.repository import CommerceRepository
 from mavuno.commerce.schemas import (
     CartItemUpsert,
     CartResponse,
     CheckoutRequest,
     FarmerOrderResponse,
+    OrderCancelRequest,
     OrderItemResponse,
     OrderResponse,
     PaymentInitiateRequest,
     PaymentResponse,
+    RefundCompletion,
+    RefundResponse,
 )
 from mavuno.commerce.service import CartService, CheckoutService, PaymentService
 
@@ -29,8 +35,6 @@ async def farmer_orders(
     current_user: CurrentUser, session: DatabaseSession
 ) -> list[FarmerOrderResponse]:
     if not current_user.has_role("farmer"):
-        from mavuno.api.errors import ApiError
-
         raise ApiError(
             status_code=403, code="farmer_role_required", message="The farmer role is required"
         )
@@ -40,12 +44,26 @@ async def farmer_orders(
     for order, item, buyer, profile, address in rows:
         response = grouped.get(order.id)
         if response is None:
+            awaiting_payment = order.status == "pending_payment"
             location = (
                 None
-                if address is None
+                if address is None or awaiting_payment
                 else f"{address.line_1}, {address.locality}, {address.county}"
             )
-            phone = buyer.phone_e164 or await repository.paid_order_phone(order.id)
+            phone = (
+                None
+                if awaiting_payment
+                else buyer.phone_e164 or await repository.paid_order_phone(order.id)
+            )
+            part = next(
+                (
+                    value
+                    for value in await repository.order_fulfilments(order.id)
+                    if value.farmer_id == current_user.id
+                ),
+                None,
+            )
+            farmers = {value.farmer_id for value in await repository.order_items(order.id)}
             response = FarmerOrderResponse(
                 id=order.id,
                 order_number=f"MVN-{str(order.id)[:8].upper()}",
@@ -56,6 +74,10 @@ async def farmer_orders(
                 total_amount=Decimal("0"),
                 status=order.status,
                 created_at=order.created_at,
+                reservation_expires_at=order.reservation_expires_at if awaiting_payment else None,
+                fulfilment_status=part.status if part else None,
+                fulfilment_version=part.version if part else None,
+                other_farmers=len(farmers - {current_user.id}),
             )
             grouped[order.id] = response
         response.items.append(
@@ -131,13 +153,28 @@ async def order_payments(
     repository = CommerceRepository(session)
     order = await repository.order(order_id)
     if order is None or order.buyer_id != current_user.id:
-        from mavuno.api.errors import ApiError
-
         raise ApiError(status_code=404, code="order_not_found", message="Order was not found")
     return [
         PaymentResponse.model_validate(payment)
         for payment in await repository.order_payments(order_id)
     ]
+
+
+@router.post("/orders/{order_id}/cancel", response_model=OrderResponse)
+async def cancel_order(
+    order_id: UUID,
+    payload: OrderCancelRequest,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+    request: Request,
+) -> OrderResponse:
+    service = CheckoutService(
+        CommerceRepository(session),
+        request.app.state.settings,
+        getattr(request.app.state, "catalog_cache", None),
+    )
+    order = await service.cancel(current_user, order_id, payload.reason)
+    return await service.response(order)
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)
@@ -160,9 +197,11 @@ async def initiate_payment(
     session: DatabaseSession,
     request: Request,
 ) -> object:
-    return await PaymentService(CommerceRepository(session), request.app.state.settings).initiate(
-        current_user, payload, idempotency_key
-    )
+    return await PaymentService(
+        CommerceRepository(session),
+        request.app.state.settings,
+        catalog_cache=getattr(request.app.state, "catalog_cache", None),
+    ).initiate(current_user, payload, idempotency_key)
 
 
 @router.get("/payments/{payment_id}", response_model=PaymentResponse)
@@ -172,15 +211,66 @@ async def get_payment(
     repository = CommerceRepository(session)
     payment = await repository.payment(payment_id)
     if payment is None:
-        from mavuno.api.errors import ApiError
-
         raise ApiError(status_code=404, code="payment_not_found", message="Payment was not found")
     order = await repository.order(payment.order_id)
     if order is None or order.buyer_id != current_user.id:
-        from mavuno.api.errors import ApiError
-
         raise ApiError(status_code=404, code="payment_not_found", message="Payment was not found")
     return payment
+
+
+@router.post("/payments/{payment_id}/refresh", response_model=PaymentResponse)
+async def refresh_payment(
+    payment_id: UUID, current_user: CurrentUser, session: DatabaseSession, request: Request
+) -> object:
+    return await PaymentService(
+        CommerceRepository(session),
+        request.app.state.settings,
+        catalog_cache=getattr(request.app.state, "catalog_cache", None),
+    ).refresh(current_user, payment_id)
+
+
+@router.get("/admin/refunds", response_model=list[RefundResponse])
+async def open_refunds(current_user: CurrentUser, session: DatabaseSession) -> object:
+    _require_admin(current_user)
+    return await CommerceRepository(session).refunds_by_state(
+        ("pending", "submitted", "manual_required", "failed")
+    )
+
+
+@router.post("/admin/refunds/{refund_id}/complete", response_model=RefundResponse)
+async def complete_refund(
+    refund_id: UUID,
+    payload: RefundCompletion,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+    request: Request,
+) -> object:
+    _require_admin(current_user)
+    return await RefundService(
+        CommerceRepository(session), request.app.state.settings
+    ).complete_manually(current_user.id, refund_id, payload.reference, payload.note)
+
+
+@router.post("/webhooks/payments/daraja-reversal/{callback_token}", status_code=202)
+async def daraja_reversal_result(
+    callback_token: str,
+    payload: dict[str, object],
+    session: DatabaseSession,
+    request: Request,
+) -> dict[str, bool]:
+    await PaymentService(
+        CommerceRepository(session), request.app.state.settings
+    ).accept_reversal_result(callback_token, payload)
+    return {"accepted": True}
+
+
+def _require_admin(user: AuthenticatedUser) -> None:
+    if not user.has_role("administrator"):
+        raise ApiError(
+            status_code=403,
+            code="administrator_role_required",
+            message="The administrator role is required",
+        )
 
 
 @router.post("/webhooks/payments/daraja/{callback_token}", status_code=202)

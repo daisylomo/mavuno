@@ -121,6 +121,8 @@ def test_identity_metadata_contains_baseline_tables() -> None:
         "outbox_jobs",
         "payment_events",
         "payment_reconciliations",
+        "payment_refunds",
+        "listing_image_contents",
         "payments",
         "plans",
         "prebookings",

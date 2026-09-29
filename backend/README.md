@@ -134,9 +134,46 @@ lightweight image; MySQL remains an external service and no Docker Compose file 
 
 The payment boundary supports `mpesa` and `bank` rails. M-PESA uses Safaricom Daraja STK Push.
 Callbacks are treated only as notifications: the worker queries Daraja directly and marks an order
-paid only after amount, currency, payer phone, merchant shortcode, and transaction reference
-checks pass. Callback payloads are reduced to a safe allowlist before storage. Enable the rail only
-after sandbox credentials and a random callback-path token have been injected:
+paid only when that query reports success for the exact STK request Mavuno created. Daraja's
+status query does not return the amount or the M-PESA receipt number, so those are taken from the
+success callback when it arrives, and checked: a reported amount, payer phone or shortcode that
+does not match is a discrepancy and never pays the order. A success confirmed by the query alone is
+recorded as `matched_query_only` (the STK amount is fixed by the merchant); the receipt is filled in
+when the callback lands. Callback payloads are reduced to a safe allowlist (the phone number is
+masked) before storage.
+
+While a prompt is open the worker checks the payment at 30, 75 and 150 seconds, and the app can ask
+for a check with `POST /payments/{id}/refresh`, so a lost callback or a sleeping free host does
+not strand a paid order.
+
+Stock rules around payment:
+
+* A failed or dismissed prompt shortens the reservation to `MAVUNO_PAYMENT_RETRY_GRACE_MINUTES`
+  (default 5), so a buyer can retry without farmers' stock being held for the full window.
+* A reservation is not released while a prompt sent in the last
+  `MAVUNO_PAYMENT_INFLIGHT_GRACE_SECONDS` (default 180) might still be answered.
+* A payment that is confirmed after the order expired takes the stock back only if every line is
+  still available; otherwise the buyer is refunded. It never oversells.
+* A payment for a cancelled order, or a second payment for a paid order, is refunded.
+* Order totals are charged in whole shillings. Listing prices must be whole shillings; fractional
+  quantities can still produce cents, so the charged `total_amount` is the subtotal rounded down.
+
+Refunds are recorded in `payment_refunds` in the same transaction as the event that makes them
+owed. A full refund of an M-PESA payment with a known receipt is sent to Daraja's Transaction
+Reversal API by the worker when these are set:
+
+```text
+MAVUNO_DARAJA_INITIATOR_NAME=<API operator username>
+MAVUNO_DARAJA_SECURITY_CREDENTIAL=<initiator password encrypted with Safaricom's certificate>
+```
+
+Without them, and for partial refunds (one farmer in a mixed order cancelling), the refund is
+marked `manual_required`. Administrators list open refunds with `GET /admin/refunds` and record a
+manually sent refund with `POST /admin/refunds/{id}/complete`. Reversal results arrive at the
+tokenized `/webhooks/payments/daraja-reversal/{token}` endpoint.
+
+Enable the rail only after sandbox credentials and a random callback-path token have been
+injected:
 
 ```text
 MAVUNO_PAYMENTS_ENABLED=true
@@ -148,21 +185,45 @@ The bank adapter is intentionally fail-closed until a regulated Kenyan bank/paym
 selected. The generic bank configuration keys reserve that integration boundary; they do not
 pretend that a transfer has been validated.
 
-Commerce endpoints live under `/api/v1`: cart item management, checkout, order retrieval, payment
-initiation/retrieval, and the tokenized Daraja callback endpoint. Every retryable client operation
-requires an `Idempotency-Key` header.
+Commerce endpoints live under `/api/v1`: cart item management, checkout, order retrieval and
+cancellation (`POST /orders/{id}/cancel`), payment initiation/retrieval/refresh, and the tokenized
+Daraja callback endpoints. Every retryable client operation requires an `Idempotency-Key` header.
+
+Farmers see their orders at `GET /farmers/me/orders`, including orders still awaiting payment
+(with the reservation deadline, but without the buyer's phone or address until payment is
+verified) and their own hand-over status.
 
 ## Fulfilment coordination
 
-Feature 07 adds one order-level fulfilment record for pickup or delivery coordination. Buyers
-choose the method, location snapshot, time window, and notes after verified payment. Farmers who
-own an item in that order can view the coordination and advance preparation states; buyers confirm
-completion, while administrators can resolve exceptional transitions. Each transition is audited
-and updates use a version number plus database row locks to reject stale concurrent writes.
+An order can contain produce from several farmers, so each farmer has their own fulfilment record
+covering only their items. The buyer's first `PATCH /api/v1/fulfilments/{order_id}` creates one
+record per farmer with the same method, location, window and notes. After that:
 
-Use `GET` and `PATCH /api/v1/fulfilments/{order_id}` to read or establish coordination, and
-`POST /api/v1/fulfilments/{order_id}/status` for state transitions. The scope ends at coordination
-and handover status: the backend deliberately does not assign drivers, vehicles, routes, or fleets.
+* a farmer sees and advances only their own record (`scheduled`, `ready_for_handover`,
+  `in_transit` for deliveries) and may withdraw it while it is still `pending` or `scheduled`;
+* the buyer confirms completion, or cancels, per farmer — pass `?farmer_id=` when the order has
+  more than one farmer (`GET /fulfilments/{order_id}/parts` lists them);
+* cancelling a farmer's part returns that farmer's stock and records a refund for their items;
+* the order is `completed` once every farmer's part has finished and at least one was handed
+  over, and `cancelled` if every part was cancelled.
+
+Each transition is audited and updates use a version number plus database row locks to reject
+stale concurrent writes. The scope ends at coordination and hand-over status: the backend
+deliberately does not assign drivers, vehicles, routes, or fleets.
+
+## Farmers behind listings
+
+Every listing response carries a `farmer` summary: display name, farm name, county and locality,
+verification status, member-since date, number of active listings and completed orders, pickup and
+delivery options, and the farmer's own description of their farming practices (never presented as
+a certification). `GET /farmers/{farmer_id}` adds the bio, farm size, year started, delivery
+radius, produce categories and cancelled hand-overs. Farmers edit these details with
+`GET`/`PATCH /users/me/farmer`.
+
+Farmers upload their own photos with `POST /listings/{id}/photos` (base64 JPEG, PNG or WebP, up to
+`MAVUNO_LISTING_IMAGE_MAX_BYTES`, default 1.5 MB). The bytes are stored in MySQL so a stateless host
+without object storage can serve them from `GET /listing-images/{image_id}`; image responses carry
+that path as `url`. Keys under `preset/` name illustrations bundled with the app.
 
 ## Messaging and notifications
 

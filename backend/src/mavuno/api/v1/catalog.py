@@ -13,6 +13,7 @@ from mavuno.catalog.repository import CatalogRepository
 from mavuno.catalog.schemas import (
     CategoryCreate,
     CategoryResponse,
+    FarmerPublicProfile,
     ImageCreate,
     ImageResponse,
     InventoryChange,
@@ -20,6 +21,7 @@ from mavuno.catalog.schemas import (
     ListingPage,
     ListingResponse,
     ListingUpdate,
+    PhotoUpload,
     ProductCreate,
     ProductResponse,
 )
@@ -184,6 +186,44 @@ async def add_image(
     image = await _service(session).add_image(current_user, listing_id, payload)
     await request.app.state.catalog_cache.invalidate_listing(str(listing_id))
     return image
+
+
+@router.post(
+    "/listings/{listing_id}/photos",
+    response_model=ImageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_photo(
+    listing_id: UUID,
+    payload: PhotoUpload,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+    request: Request,
+) -> object:
+    service = CatalogService(
+        CatalogRepository(session), request.app.state.settings.listing_image_max_bytes
+    )
+    image = await service.add_photo(current_user, listing_id, payload)
+    await request.app.state.catalog_cache.invalidate_listing(str(listing_id))
+    return image
+
+
+@router.get("/listing-images/{image_id}", response_class=Response)
+async def listing_photo(image_id: UUID, request: Request, session: DatabaseSession) -> Response:
+    photo = await _service(session).photo(image_id)
+    etag = f'"{photo.sha256}"'
+    headers = {"ETag": etag, "Cache-Control": "public, max-age=86400, immutable"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    return Response(content=photo.content, media_type=photo.content_type, headers=headers)
+
+
+@router.get("/farmers/{farmer_id}", response_model=FarmerPublicProfile)
+async def farmer_profile(
+    farmer_id: UUID, session: DatabaseSession, response: Response
+) -> FarmerPublicProfile:
+    response.headers["Cache-Control"] = "public, max-age=60"
+    return await _service(session).farmer_profile(farmer_id)
 
 
 @router.delete("/listings/{listing_id}/images/{image_id}", status_code=204)

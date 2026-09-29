@@ -35,6 +35,12 @@ class ProductResponse(ProductCreate):
     id: UUID
 
 
+def _whole_shillings(value: Decimal | None) -> Decimal | None:
+    if value is not None and value != value.to_integral_value():
+        raise ValueError("Prices must be whole shillings; M-PESA cannot charge cents")
+    return value
+
+
 class ListingCreate(BaseModel):
     product_id: UUID
     title: Annotated[Trimmed, Field(min_length=3, max_length=180)]
@@ -48,6 +54,7 @@ class ListingCreate(BaseModel):
 
     @model_validator(mode="after")
     def valid_window(self) -> ListingCreate:
+        _whole_shillings(self.price_amount)
         if (
             self.available_from is not None
             and self.available_until is not None
@@ -71,6 +78,7 @@ class ListingUpdate(BaseModel):
     def has_changes(self) -> ListingUpdate:
         if self.model_fields_set == {"expected_version"}:
             raise ValueError("At least one listing field is required")
+        _whole_shillings(self.price_amount)
         for field in ("title", "price_amount", "status"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be null")
@@ -98,9 +106,57 @@ class ImageCreate(BaseModel):
         return self
 
 
+UPLOADED_IMAGE_PREFIX = "uploads/"
+PRESET_IMAGE_PREFIX = "preset/"
+
+
 class ImageResponse(ImageCreate):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+    # Where a photo uploaded from the app is served, relative to the API root. Preset keys
+    # ("preset/tomatoes") name an illustration bundled with the app and have no URL.
+    url: str | None = None
+
+    @model_validator(mode="after")
+    def served_url(self) -> ImageResponse:
+        if self.url is None and self.object_key.startswith(UPLOADED_IMAGE_PREFIX):
+            self.url = f"/api/v1/listing-images/{self.id}"
+        return self
+
+
+class PhotoUpload(BaseModel):
+    content_type: Literal["image/jpeg", "image/png", "image/webp"]
+    # Base64 of the image bytes (no data: prefix). The app resizes photos before upload.
+    content_base64: str = Field(min_length=16, max_length=11_000_000)
+    alt_text: Annotated[Trimmed, Field(max_length=255)] | None = None
+
+
+class FarmerSummary(BaseModel):
+    """What a buyer sees about the farmer behind a listing."""
+
+    id: UUID
+    display_name: str
+    farm_name: str | None
+    county: str | None
+    locality: str | None
+    verification_status: str
+    member_since: datetime
+    active_listings: int
+    completed_orders: int
+    offers_pickup: bool
+    offers_delivery: bool
+    # As stated by the farmer; Mavuno does not certify farming practices.
+    farming_practices: str | None
+
+
+class FarmerPublicProfile(FarmerSummary):
+    bio: str | None
+    farm_size_acres: Decimal | None
+    farming_since_year: int | None
+    delivery_radius_km: int | None
+    categories: list[str]
+    # Hand-overs for this farmer's items that were called off, by anyone.
+    cancelled_handovers: int
 
 
 class InventoryChange(BaseModel):
@@ -136,6 +192,7 @@ class ListingResponse(BaseModel):
     images: list[ImageResponse]
     created_at: datetime
     updated_at: datetime
+    farmer: FarmerSummary | None = None
 
 
 class ListingPage(BaseModel):

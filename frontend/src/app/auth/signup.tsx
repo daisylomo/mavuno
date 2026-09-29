@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +14,7 @@ import {
 import { Href, useRouter } from 'expo-router';
 import { Colors } from '../../constants/theme';
 import { userService } from '../../services/user-service';
+import { wakeServer } from '../../components/customer-catalog-api';
 import { PASSWORD_MIN_LENGTH } from '../../services/auth-api';
 
 type RegisterRole = 'customer' | 'farmer';
@@ -56,6 +57,11 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    // The hosted API sleeps when idle; start waking it while the person types.
+    try { wakeServer(); } catch { /* an invalid API URL is reported when submitting */ }
+  }, []);
 
   const handleSignUp = async () => {
     if (!name.trim()) {
@@ -263,6 +269,11 @@ export default function SignUpScreen() {
               </Text>
             )}
           </TouchableOpacity>
+          {loading && (
+            <Text style={styles.wakeHint}>
+              The first sign-in after a quiet spell can take up to a minute while the server starts.
+            </Text>
+          )}
 
           {/* Back to Login */}
           <View style={styles.footerRow}>
@@ -278,6 +289,12 @@ export default function SignUpScreen() {
 }
 
 const styles = StyleSheet.create({
+  wakeHint: {
+    color: '#64748B',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
+  },
   keyboardContainer: {
     flex: 1,
     backgroundColor: '#F7FAF7',

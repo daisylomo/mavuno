@@ -8,6 +8,7 @@ from mavuno.payments.provider import (
     InitiationResult,
     PaymentProviderError,
     ProviderStatus,
+    ReversalResult,
 )
 
 
@@ -25,5 +26,5 @@ class UnconfiguredBankProvider:
     async def query_status(self, provider_request_ref: str) -> ProviderStatus:
         raise PaymentProviderError("Bank payment provider has not been selected")
 
-    async def reverse(self, transaction_ref: str, amount: Decimal, reason: str) -> str:
+    async def reverse(self, transaction_ref: str, amount: Decimal, reason: str) -> ReversalResult:
         raise PaymentProviderError("Bank payment provider has not been selected")

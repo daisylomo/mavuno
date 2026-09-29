@@ -11,6 +11,10 @@ class PaymentProviderError(Exception):
     """A safe provider error that contains no credentials or raw payload."""
 
 
+class ReversalNotConfiguredError(PaymentProviderError):
+    """Automatic reversal is unavailable; an operator must return the money."""
+
+
 @dataclass(frozen=True, slots=True)
 class InitiationRequest:
     amount: Decimal
@@ -35,6 +39,11 @@ class CallbackEvent:
     outcome_hint: PaymentOutcome
     authenticated: bool
     redacted_payload: dict[str, object]
+    # Settlement details a successful STK callback carries. The status query that confirms the
+    # payment does not return them, so reconciliation reads them from the callback.
+    amount: Decimal | None = None
+    transaction_ref: str | None = None
+    payer_phone_e164: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +59,12 @@ class ProviderStatus:
     result_description: str
 
 
+@dataclass(frozen=True, slots=True)
+class ReversalResult:
+    provider_ref: str
+    accepted: bool
+
+
 class PaymentProvider(Protocol):
     name: str
 
@@ -59,4 +74,6 @@ class PaymentProvider(Protocol):
 
     async def query_status(self, provider_request_ref: str) -> ProviderStatus: ...
 
-    async def reverse(self, transaction_ref: str, amount: Decimal, reason: str) -> str: ...
+    async def reverse(
+        self, transaction_ref: str, amount: Decimal, reason: str
+    ) -> ReversalResult: ...

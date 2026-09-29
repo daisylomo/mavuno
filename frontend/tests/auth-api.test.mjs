@@ -167,3 +167,27 @@ test('logout revokes the refresh token with the bearer header', async () => {
     assert.equal(calls[0].init.headers.Authorization, 'Bearer access-token-value');
   });
 });
+
+test('a sleeping host gateway error is retried once, then explained', async () => {
+  await withApi(async () => {
+    const statuses = [503, 200];
+    let calls = 0;
+    globalThis.fetch = async () => {
+      const status = statuses[calls++];
+      return new Response(JSON.stringify(status === 200 ? tokenResponse : null), {
+        status, headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    const signedIn = await authApi.login('jane@example.com', 'a-long-password');
+    assert.equal(signedIn.user.email, 'jane@example.com');
+    assert.equal(calls, 2);
+
+    calls = 0;
+    statuses.splice(0, 2, 502, 504);
+    await assert.rejects(
+      authApi.login('jane@example.com', 'a-long-password'),
+      /starting up after being idle/
+    );
+    assert.equal(calls, 2);
+  });
+});

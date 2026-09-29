@@ -35,7 +35,7 @@ async def test_commerce_routes_delegate_to_services(monkeypatch: pytest.MonkeyPa
     payment_service.accept_callback = AsyncMock()
     monkeypatch.setattr(commerce, "CartService", lambda *_args: cart_service)
     monkeypatch.setattr(commerce, "CheckoutService", lambda *_args: checkout_service)
-    monkeypatch.setattr(commerce, "PaymentService", lambda *_args: payment_service)
+    monkeypatch.setattr(commerce, "PaymentService", lambda *_args, **_kwargs: payment_service)
 
     cart_result: Any = await commerce.get_cart(user, session)
     assert cart_result == "cart"
