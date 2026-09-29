@@ -37,7 +37,8 @@ pytestmark = [
 ]
 
 
-def test_catalog_http_contract_and_cache_headers() -> None:
+@pytest.mark.parametrize("initial_quantity", ["0", "10"])
+def test_catalog_http_contract_and_cache_headers(initial_quantity: str) -> None:
     assert TEST_DATABASE_URL is not None
     user_id = uuid4()
     actor = AuthenticatedUser(
@@ -130,12 +131,44 @@ def test_catalog_http_contract_and_cache_headers() -> None:
                     "product_id": product_id,
                     "title": "Fresh sweet potatoes",
                     "price_amount": "90.00",
-                    "available_quantity": "10",
+                    "available_quantity": initial_quantity,
                     "quantity_unit": "kg",
                 },
             )
             assert created.status_code == 201
             listing_id = created.json()["id"]
+            assert created.json()["available_quantity"] == f"{initial_quantity}.000"
+            if initial_quantity == "0":
+                # A zero-stock draft has no movement until stock is actually added.
+                async def movements_count() -> int:
+                    database = Database(
+                        Settings(environment="test", database_url=SecretStr(TEST_DATABASE_URL))
+                    )
+                    try:
+                        async with database.session() as session:
+                            movements = list(
+                                await session.scalars(
+                                    select(InventoryMovement).where(
+                                        InventoryMovement.listing_id == UUID(listing_id)
+                                    )
+                                )
+                            )
+                            return len(movements)
+                    finally:
+                        await database.dispose()
+
+                assert asyncio.run(movements_count()) == 0
+                stocked = client.post(
+                    f"/api/v1/listings/{listing_id}/inventory",
+                    json={
+                        "quantity_delta": "10",
+                        "movement_type": "adjustment",
+                        "reason": "First harvest",
+                    },
+                )
+                assert stocked.status_code == 200
+                assert stocked.json()["available_quantity"] == "10.000"
+                assert asyncio.run(movements_count()) == 1
 
             owned = client.get("/api/v1/farmers/me/listings")
             assert owned.status_code == 200
@@ -144,10 +177,10 @@ def test_catalog_http_contract_and_cache_headers() -> None:
 
             activated = client.patch(
                 f"/api/v1/listings/{listing_id}",
-                json={"expected_version": 1, "status": "active"},
+                json={"expected_version": 2 if initial_quantity == "0" else 1, "status": "active"},
             )
             assert activated.status_code == 200
-            assert activated.json()["version"] == 2
+            assert activated.json()["version"] == (3 if initial_quantity == "0" else 2)
 
             image = client.post(
                 f"/api/v1/listings/{listing_id}/images",
@@ -200,7 +233,8 @@ def test_catalog_http_contract_and_cache_headers() -> None:
             )
             assert (
                 client.delete(
-                    f"/api/v1/listings/{listing_id}", params={"expected_version": 3}
+                    f"/api/v1/listings/{listing_id}",
+                    params={"expected_version": 4 if initial_quantity == "0" else 3},
                 ).status_code
                 == 204
             )
