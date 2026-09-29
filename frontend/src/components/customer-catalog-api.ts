@@ -193,7 +193,7 @@ export async function getListing(base: string, id: string, signal: AbortSignal):
 
 export async function getFarmer(base: string, id: string, signal: AbortSignal): Promise<FarmerProfile> {
   const data = await getJson(`${base}/farmers/${encodeURIComponent(id)}`, signal);
-  if (!isFarmerSummary(data) || !record(data) || !Array.isArray(data.categories)) {
+  if (!isFarmerSummary(data) || !Array.isArray((data as { categories?: unknown }).categories)) {
     throw new Error('The farmer profile response is invalid.');
   }
   return data as FarmerProfile;
