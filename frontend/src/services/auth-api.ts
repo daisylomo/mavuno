@@ -40,7 +40,7 @@ export function toBackendRole(role: AppRole): BackendRole {
 
 /** The backend returns a list of roles; the screens expect a single one. */
 export function toAppRole(roles: readonly string[]): AppRole {
-  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('administrator') || roles.includes('admin')) return 'admin';
   if (roles.includes('farmer')) return 'farmer';
   return 'customer';
 }

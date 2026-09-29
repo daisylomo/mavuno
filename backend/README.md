@@ -15,13 +15,29 @@ From this directory:
 
 ```bash
 uv sync --frozen
-uv run uvicorn mavuno.main:app --reload
+uv run uvicorn mavuno.main:app --app-dir src --reload
 ```
 
 The API listens at `http://127.0.0.1:8000`. Its initial operational endpoints are:
 
 - `GET /health/live`: the process is alive.
 - `GET /health/ready`: the process has completed startup and can receive traffic.
+
+## Browser administration
+
+Open `/admin` on the API host (for the hosted environment,
+`https://mavuno-api.onrender.com/admin`). Sign in with an existing account whose
+backend role is `administrator`. Public registration cannot grant this role.
+The portal uses the same authenticated API as the app to add categories and
+produce types, inspect outstanding refunds, and record a refund already paid
+outside the app with its provider reference. It never initiates a money transfer.
+Tokens remain in memory; closing or reloading the page requires signing in again.
+The app's admin dashboard links to this portal.
+
+Backend CI runs on `main`, backend branches, pull requests and manual dispatch.
+It checks formatting, lint, types, migrations, all backend tests, Python client
+journeys, the OpenAPI contract and the runtime image. Android publication also
+requires these checks to pass. See `../RELEASE.md` for environment limitations.
 
 Copy `.env.example` to `.env` for local overrides. Variables use the `MAVUNO_` prefix. Never
 commit `.env` or production secrets.

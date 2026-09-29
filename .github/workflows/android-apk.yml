@@ -4,12 +4,18 @@ on:
   pull_request:
     paths:
       - frontend/**
+      - backend/**
+      - api_client/**
+      - .github/workflows/backend-ci.yml
       - .github/workflows/android-apk.yml
   push:
     branches: [main]
     tags: ['v*']
     paths:
       - frontend/**
+      - backend/**
+      - api_client/**
+      - .github/workflows/backend-ci.yml
       - .github/workflows/android-apk.yml
   workflow_dispatch:
 
@@ -17,6 +23,9 @@ permissions:
   contents: read
 
 jobs:
+  backend:
+    uses: ./.github/workflows/backend-ci.yml
+
   verify:
     runs-on: ubuntu-latest
     defaults:
@@ -34,7 +43,7 @@ jobs:
       - run: node --experimental-strip-types --test tests/*.test.mjs
 
   build:
-    needs: verify
+    needs: [verify, backend]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
@@ -71,11 +80,11 @@ jobs:
           unzip -Z1 "$APK" | grep '^classes.dex$'
           mkdir -p dist-ci
           cp "$APK" "dist-ci/mavuno-test-${GITHUB_SHA:0:12}.apk"
-          sha256sum dist-ci/*.apk
+          cd dist-ci && sha256sum *.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: mavuno-android-apk-${{ github.sha }}
-          path: frontend/dist-ci/*.apk
+          path: frontend/dist-ci/*
           if-no-files-found: error
           retention-days: 14
 
@@ -95,7 +104,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/*.apk --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --prerelease
           else
-            gh release create "$GITHUB_REF_NAME" dist/*.apk --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+            gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --prerelease --title "Mavuno $GITHUB_REF_NAME (sandbox)" --notes "Android release candidate using sandbox M-Pesa and test signing. No real payments are collected. Backend and frontend checks passed before this APK was built. SHA256SUMS.txt verifies the download. Production requires production Daraja credentials, durable release signing, and live payment validation."
           fi

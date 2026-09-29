@@ -58,6 +58,7 @@ test('the backend roles list maps back to a single app role', () => {
   assert.equal(toAppRole(['buyer']), 'customer');
   assert.equal(toAppRole(['farmer']), 'farmer');
   assert.equal(toAppRole(['admin', 'buyer']), 'admin');
+  assert.equal(toAppRole(['administrator', 'farmer', 'buyer']), 'admin');
   assert.equal(toAppRole([]), 'customer');
 });
 
