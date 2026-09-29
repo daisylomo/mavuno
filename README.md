@@ -59,12 +59,9 @@ the bananas. When nothing matches, the listing falls back to a picture for its
 category. These are illustrations, not the farmer's actual harvest, and every
 such card says so underneath the image.
 
-With the live API, farmers add their own photo when listing produce from the web
-app: the browser resizes it to at most 1280 px before uploading, and buyers see that
-photo on every device. Taking a photo in the Android app needs the
-`expo-image-picker` native module, which is not in the build yet; add it with
-`npx expo install expo-image-picker` in `frontend` and wire it into
-`handlePickImage` in `src/app/farmer/new-listing.tsx`. A farmer
+With the live API, farmers add their own photo when listing produce: they take one
+with the camera or choose one from the gallery (on the web, from a file). The app
+resizes it to about 1280 px before uploading, and buyers see that photo. A farmer
 without a photo can pick a bundled illustration instead; buyers are told it is not
 the farmer's own photo. Listings never get a description the farmer did not write,
 and the harvest option the farmer picks is sent as a harvest date.
