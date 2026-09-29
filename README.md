@@ -59,12 +59,9 @@ leafy-greens picture, and "Ndizi" on the bananas. When nothing matches, the
 listing falls back to a picture for its category. These are illustrations, not
 the farmer's actual harvest, and every such card says so underneath the image.
 
-The cart survives a page refresh: it is saved on the device, so a shopper who
-reloads mid-shop keeps their basket. It is trimmed against the catalogue once
-that has loaded, so a quantity larger than the stock on offer is brought down,
-and a product the farmer has since sold out of or withdrawn drops out. Placing
-a demo order clears the saved cart. The cart is stored on the device only and
-is not sent anywhere.
+Without an API URL, the demo cart is saved on the device and trimmed against
+the demo catalogue. With an API URL, signed-in buyers use the backend cart,
+addresses, order checkout, M-Pesa payment initiation, and order history.
 
 To browse **real active listings**, start the [backend](./backend/README.md)
 with MySQL configured and migrations applied. Restart Expo with the public
@@ -79,15 +76,17 @@ Set `MAVUNO_CORS_ORIGINS='["http://localhost:8081"]'` in the backend
 environment for the web preview. For a phone, use your computer's LAN IP in
 the public API URL (not `127.0.0.1`); permit that address through the firewall.
 The URL is baked into the Expo client, so restart Expo after changing it.
-Only public listing and category reads are connected; live mode is **browse
-only, with no cart, checkout or payment**. This is a deliberate scope choice,
-not a backend gap: the API does provide `/cart`, `/cart/items/{listing_id}` and
-`POST /orders`. Each of those requires a signed-in user, so connecting them
-means sending the stored access token with catalog requests, refreshing it when
-it expires, creating a delivery address through `POST /profiles/addresses`, and
-sending an `Idempotency-Key` header on checkout. Until then the full purchase
-journey lives in demo mode. Network and malformed-response errors are displayed
-with retry controls, never replaced with sample products.
+Live mode uses the API for listings, cart, checkout, payment status, and farmer
+listing management. Checkout and payment initiation use idempotency keys.
+Network and malformed-response errors are displayed with retry controls.
+
+The hosted test API is `https://mavuno-api.onrender.com/api/v1`. It uses free
+Render and Aiven services, so its first request after inactivity can be slow.
+The configured Daraja account is **sandbox only**: no real M-Pesa payment is
+collected. An APK for this environment must set both
+`EXPO_PUBLIC_MAVUNO_API_URL=https://mavuno-api.onrender.com/api/v1` and
+`EXPO_PUBLIC_MAVUNO_PAYMENTS_SANDBOX=1` at build time. Production payments
+require production Daraja credentials and a separate end-to-end validation.
 
 The backend provides image *object keys*, not public image URLs. Until public
 image hosting exists, live cards explicitly show "Photo unavailable".
