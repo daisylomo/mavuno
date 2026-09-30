@@ -12,9 +12,11 @@ No real payment is collected. The browser admin portal is served by the API at
 - Buyer browsing, cart, addresses, checkout, order history and cancellation.
 - Sandbox payment reconciliation, stock reservations and refund tracking.
 - Farmer-specific order confirmation and handover for mixed-farmer orders.
-- Backend conversations, notifications, premium entitlements and prebookings.
-  Provider-dependent features require their configured providers; the app does
-  not offer a complete messaging or premium-management interface.
+- Buyer/farmer messaging from listings and orders, unread inbox summaries,
+  recent history, notification inbox and notification preferences.
+- Premium plans, verified subscription history, future-harvest requests and
+  farmer insights. New subscriptions require a configured provider; billing,
+  renewal and cancellation are handled by that provider.
 - Browser administration for category/product and premium plan creation, plus refunds.
   Account provisioning and broader moderation remain operator tasks.
 
