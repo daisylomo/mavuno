@@ -40,8 +40,11 @@ verify it against the checksum before installing.
 Render should deploy `main` after CI passes, using `backend/Dockerfile`,
 `backend` as build context, `/app/entrypoint.sh`, and `/health/ready`.
 The entrypoint applies migrations before starting the API and worker.
-The configured automatic Render trigger did not deploy the rc.2 commit; that
-deployment was performed manually. Automatic hosted deployment remains unverified.
+Backend deployment runs automatically for backend changes on `main`, after the
+reusable backend checks pass. It uses the repository secret `RENDER_DEPLOY_HOOK_URL`
+to request the exact verified commit. The workflow also supports manual dispatch.
+Render's native CI trigger did not deploy previous candidates reliably; the
+GitHub deployment workflow provides an explicit, gated deployment path.
 
 ## Production gates
 
