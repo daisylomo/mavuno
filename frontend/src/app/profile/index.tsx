@@ -17,9 +17,12 @@ import { AppUser, userService } from '../../services/user-service';
 import { isBackendConfigured } from '../../services/auth-api';
 import { farmerService } from '../../services/farmer-service';
 import { FarmerPublicDetails } from '../../types/farmer';
+import { useRevenueCat } from '@/providers/revenuecat-provider';
 
 export default function ProfileSettings() {
   const router = useRouter();
+  const { forgetUser } = useRevenueCat();
+
 
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [name, setName] = useState('');
@@ -82,6 +85,12 @@ export default function ProfileSettings() {
 
   const handleLogout = async () => {
     const doLogout = async () => {
+      try {
+        await forgetUser();
+      } catch (error) {
+        console.warn('RevenueCat logout failed:', error);
+      }
+      
       await userService.logout();
       router.replace('/auth/login' as Href);
     };
