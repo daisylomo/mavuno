@@ -59,7 +59,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
       style={styles.keyboardContainer}>
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
