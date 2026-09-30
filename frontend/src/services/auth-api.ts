@@ -7,6 +7,15 @@ import {
 /** The backend rejects anything shorter (see RegisterRequest in backend/src/mavuno/auth/schemas.py). */
 export const PASSWORD_MIN_LENGTH = 10;
 
+export class AuthApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'AuthApiError';
+    this.status = status;
+  }
+}
+
 /** Gateway answers while a sleeping host starts; the request never reached the API. */
 const WAKING_STATUSES = new Set([502, 503, 504]);
 const WAKE_RETRY_DELAY_MS = 4_000;
@@ -153,7 +162,7 @@ async function request(
     }
   }
 
-  if (!response.ok) throw new Error(errorMessage(response.status, body));
+  if (!response.ok) throw new AuthApiError(response.status, errorMessage(response.status, body));
   return body;
 }
 

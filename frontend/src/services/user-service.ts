@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { refreshSession } from './auth-session';
 
 import {
   authApi,
@@ -345,7 +346,7 @@ export const userService = {
   async refreshAccessToken(): Promise<string> {
     const tokens = await this.getTokens();
     if (!tokens) throw new Error('Please sign in again to continue.');
-    try {
+    return refreshSession(async () => {
       const renewed = await authApi.refresh(tokens.refreshToken);
       await AsyncStorage.setItem(TOKENS_STORAGE_KEY, JSON.stringify({
         accessToken: renewed.access_token,
@@ -354,10 +355,7 @@ export const userService = {
       const current = await this.getCurrentUser();
       await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(fromBackendUser(renewed.user, current ?? undefined)));
       return renewed.access_token;
-    } catch {
-      await AsyncStorage.multiRemove([CURRENT_USER_KEY, TOKENS_STORAGE_KEY]);
-      throw new Error('Your session expired. Please sign in again.');
-    }
+    }, () => AsyncStorage.multiRemove([CURRENT_USER_KEY, TOKENS_STORAGE_KEY]));
   },
 
   /**

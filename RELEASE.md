@@ -23,7 +23,7 @@ No real payment is collected. The browser admin portal is served by the API at
 ## Validation
 
 Local validation on 30 September 2026 passed 201 backend tests (91.96% coverage),
-14 Python API-client journeys, 54 frontend tests, TypeScript, Ruff and mypy.
+14 Python API-client journeys, 56 frontend tests, TypeScript, Ruff and mypy.
 MySQL 8.4 and Redis 7 were disposable local containers; all nine migrations
 applied successfully. Expo web export succeeded. Android APK installation and
 startup are verified on an API 35 emulator; release-specific evidence belongs

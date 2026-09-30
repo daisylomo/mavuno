@@ -8,7 +8,7 @@ export type Category = { id: string; name: string; slug: string };
  */
 export const SERVER_TIMEOUT_MS = 60_000;
 export const SERVER_WAKING_MESSAGE =
-  'The Mavuno server is starting up after being idle. This can take up to a minute — please try again.';
+  'The Mavuno server may be temporarily unavailable or starting up after being idle. Wait a minute, then try again.';
 export type { FarmerSummary };
 
 export const LISTING_UNITS = ['kg', 'g', 'crate', 'piece', 'bunch', 'bag'] as const;
