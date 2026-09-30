@@ -53,15 +53,15 @@ export function useMarketplaceUser() { return useLiveData<AppUser | null>(loadCu
 
 export function Screen({ title, children, scroll = true }: { title: string; children: ReactNode; scroll?: boolean }) {
   const router = useRouter();
-  return <SafeAreaView style={ui.screen}>
+  return <KeyboardAvoidingView style={ui.fill} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}>
+    <SafeAreaView style={ui.screen}>
     <View style={ui.header}>
       <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={ui.back}><Text style={ui.headerText}>←</Text></Pressable>
       <Text style={ui.headerTitle}>{title}</Text>
     </View>
-    <KeyboardAvoidingView style={ui.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {scroll ? <ScrollView contentContainerStyle={ui.content} keyboardShouldPersistTaps="handled">{children}</ScrollView> : <View style={ui.fill}>{children}</View>}
-    </KeyboardAvoidingView>
-  </SafeAreaView>;
+    </SafeAreaView>
+  </KeyboardAvoidingView>;
 }
 
 export function Button({ title, onPress, disabled = false, secondary = false }: { title: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
