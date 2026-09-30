@@ -14,8 +14,10 @@ import { Href, useRouter } from 'expo-router';
 import { Colors } from '../../constants/theme';
 import { userService } from '../../services/user-service';
 import { wakeServer } from '../../components/customer-catalog-api';
+import { useRevenueCat } from '@/providers/revenuecat-provider';
 
 export default function LoginScreen() {
+  const { identifyUser } = useRevenueCat();
   const router = useRouter();
 
   const [identifier, setIdentifier] = useState('');
@@ -42,7 +44,21 @@ export default function LoginScreen() {
     setLoading(true);
 
     try {
-      const user = await userService.login(identifier.trim(), password);
+      const user = await userService.login(
+        identifier.trim(), 
+        password,
+      );
+
+      try {
+        await identifyUser(user.id);
+      } catch (revenueCatError) {
+        // Authentication succeeded. Do not lock the user out merely
+        // because subscription synchronization temporarily failed.
+        console.warn(
+          'RevenueCat identification failed:',
+          revenueCatError,
+        );
+      }
 
       if (user.role === 'farmer') {
         router.replace('/farmer' as Href);
