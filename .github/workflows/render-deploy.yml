@@ -1,0 +1,63 @@
+name: Backend deployment
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/render-deploy.yml
+  push:
+    branches: [main]
+    paths:
+      - backend/**
+      - api_client/**
+      - .github/workflows/backend-ci.yml
+      - .github/workflows/render-deploy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-main
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/backend-ci.yml
+
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Deploy verified backend commit
+        shell: python
+        run: |
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          hook = os.environ.get('RENDER_DEPLOY_HOOK_URL', '').strip()
+          if not hook:
+              raise SystemExit('RENDER_DEPLOY_HOOK_URL is required for backend deployment.')
+          url = urllib.parse.urlsplit(hook)
+          if url.scheme != 'https' or url.netloc != 'api.render.com' or url.path != '/deploy/srv-datj7fmgekts73b20njg':
+              raise SystemExit('The deploy hook must target the configured Mavuno Render service.')
+          query = urllib.parse.parse_qs(url.query)
+          query['ref'] = [os.environ['GITHUB_SHA']]
+          endpoint = urllib.parse.urlunsplit(url._replace(query=urllib.parse.urlencode(query, doseq=True)))
+          try:
+              with urllib.request.urlopen(urllib.request.Request(endpoint, method='POST'), timeout=60) as response:
+                  status = response.status
+                  result = json.load(response)
+          except urllib.error.HTTPError as error:
+              raise SystemExit(f'Render rejected the deployment with HTTP {error.code}.') from None
+          except Exception:
+              raise SystemExit('Could not reach Render to trigger the deployment.') from None
+          if status not in (200, 202):
+              raise SystemExit(f'Unexpected deployment response: HTTP {status}.')
+          print('Render accepted verified commit ' + os.environ['GITHUB_SHA'])
+          print('Deploy reference: ' + str(result.get('deploy', {}).get('id', result.get('id', 'queued'))))
