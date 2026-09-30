@@ -8,6 +8,7 @@ from mavuno.messaging.repository import MessagingRepository
 from mavuno.messaging.schemas import (
     ConversationCreate,
     ConversationResponse,
+    ConversationSummary,
     MarkReadRequest,
     MessageCreate,
     MessagePage,
@@ -35,6 +36,11 @@ async def list_conversations(current_user: CurrentUser, session: DatabaseSession
     return await MessagingService(MessagingRepository(session)).list_conversations(current_user)
 
 
+@router.get("/conversations/summary", response_model=list[ConversationSummary])
+async def conversation_summaries(current_user: CurrentUser, session: DatabaseSession) -> object:
+    return await MessagingService(MessagingRepository(session)).conversation_summaries(current_user)
+
+
 @router.post(
     "/conversations/{conversation_id}/messages", response_model=MessageResponse, status_code=201
 )
@@ -56,9 +62,10 @@ async def list_messages(
     session: DatabaseSession,
     cursor: UUID | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    latest_first: bool = False,
 ) -> object:
     return await MessagingService(MessagingRepository(session)).messages(
-        current_user, conversation_id, cursor, limit
+        current_user, conversation_id, cursor, limit, latest_first
     )
 
 

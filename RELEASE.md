@@ -12,16 +12,18 @@ No real payment is collected. The browser admin portal is served by the API at
 - Buyer browsing, cart, addresses, checkout, order history and cancellation.
 - Sandbox payment reconciliation, stock reservations and refund tracking.
 - Farmer-specific order confirmation and handover for mixed-farmer orders.
-- Backend conversations, notifications, premium entitlements and prebookings.
-  Provider-dependent features require their configured providers; the app does
-  not offer a complete messaging or premium-management interface.
-- Browser administration for category/product creation and outstanding refunds.
+- Buyer/farmer messaging from listings and orders, unread inbox summaries,
+  recent history, notification inbox and notification preferences.
+- Premium plans, verified subscription history, future-harvest requests and
+  farmer insights. New subscriptions require a configured provider; billing,
+  renewal and cancellation are handled by that provider.
+- Browser administration for category/product and premium plan creation, plus refunds.
   Account provisioning and broader moderation remain operator tasks.
 
 ## Validation
 
-Local validation on 29 September 2026 passed 201 backend tests (91.74% coverage),
-14 Python API-client journeys, 48 frontend tests, TypeScript, Ruff and mypy.
+Local validation on 30 September 2026 passed 201 backend tests (91.96% coverage),
+14 Python API-client journeys, 54 frontend tests, TypeScript, Ruff and mypy.
 MySQL 8.4 and Redis 7 were disposable local containers; all nine migrations
 applied successfully. Expo web export succeeded. Android APK installation and
 startup are verified on an API 35 emulator; release-specific evidence belongs
@@ -38,6 +40,8 @@ verify it against the checksum before installing.
 Render should deploy `main` after CI passes, using `backend/Dockerfile`,
 `backend` as build context, `/app/entrypoint.sh`, and `/health/ready`.
 The entrypoint applies migrations before starting the API and worker.
+The configured automatic Render trigger did not deploy the rc.2 commit; that
+deployment was performed manually. Automatic hosted deployment remains unverified.
 
 ## Production gates
 
@@ -48,4 +52,3 @@ configure production provider integrations for enabled premium/push features,
 and validate backup/restore, monitoring and expected hosting capacity.
 Do not enable a provider-dependent feature without its provider credentials.
 These gates cannot be inferred from passing automated tests or sandbox payments.
-

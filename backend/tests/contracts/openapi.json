@@ -743,6 +743,83 @@
         "title": "ConversationResponse",
         "type": "object"
       },
+      "ConversationSummary": {
+        "properties": {
+          "buyer_id": {
+            "format": "uuid",
+            "title": "Buyer Id",
+            "type": "string"
+          },
+          "counterpart_name": {
+            "title": "Counterpart Name",
+            "type": "string"
+          },
+          "farmer_id": {
+            "format": "uuid",
+            "title": "Farmer Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_message_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message At"
+          },
+          "last_message_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Preview"
+          },
+          "scope_id": {
+            "format": "uuid",
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "scope_label": {
+            "title": "Scope Label",
+            "type": "string"
+          },
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "unread_count": {
+            "title": "Unread Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "scope_type",
+          "scope_id",
+          "buyer_id",
+          "farmer_id",
+          "last_message_at",
+          "counterpart_name",
+          "scope_label",
+          "last_message_preview",
+          "unread_count"
+        ],
+        "title": "ConversationSummary",
+        "type": "object"
+      },
       "FarmerInsightsResponse": {
         "properties": {
           "active_listings": {
@@ -4635,6 +4712,36 @@
         ]
       }
     },
+    "/api/v1/conversations/summary": {
+      "get": {
+        "operationId": "conversation_summaries_api_v1_conversations_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationSummary"
+                  },
+                  "title": "Response Conversation Summaries Api V1 Conversations Summary Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Conversation Summaries",
+        "tags": [
+          "messaging"
+        ]
+      }
+    },
     "/api/v1/conversations/{conversation_id}/messages": {
       "get": {
         "operationId": "list_messages_api_v1_conversations__conversation_id__messages_get",
@@ -4676,6 +4783,16 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "latest_first",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Latest First",
+              "type": "boolean"
             }
           }
         ],
@@ -6482,6 +6599,32 @@
           }
         ],
         "summary": "Transition Prebooking",
+        "tags": [
+          "premium"
+        ]
+      }
+    },
+    "/api/v1/premium/availability": {
+      "get": {
+        "description": "Expose purchase availability without leaking provider configuration.",
+        "operationId": "premium_availability_api_v1_premium_availability_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Premium Availability Api V1 Premium Availability Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Premium Availability",
         "tags": [
           "premium"
         ]

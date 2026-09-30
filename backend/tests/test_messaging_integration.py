@@ -106,6 +106,24 @@ async def test_listing_conversation_message_read_and_notification_round_trip() -
             notifications = await repository.notifications(farmer_id)
             assert len(notifications) == 1
             farmer = AuthenticatedUser(farmer_id, None, None, frozenset({"farmer"}), 0)
+            summaries = await service.conversation_summaries(farmer)
+            assert len(summaries) == 1
+            assert summaries[0].scope_label == listing.title
+            assert summaries[0].last_message_preview == message.body
+            assert summaries[0].unread_count == 1
+            assert (await service.conversation_summaries(buyer))[0].unread_count == 0
+            reply = await service.send(farmer, conversation.id, uuid4(), "Yes, it is available.")
+            recent = await service.messages(buyer, conversation.id, None, 1, latest_first=True)
+            assert recent.items[0].id == reply.id
+            assert recent.next_cursor is not None
+            previous = await service.messages(
+                buyer, conversation.id, recent.next_cursor, 1, latest_first=True
+            )
+            assert previous.items[0].id == message.id
+            assert previous.next_cursor is None
+            assert (await service.conversation_summaries(buyer))[0].unread_count == 1
+            await service.mark_read(buyer, conversation.id, reply.id)
+            assert (await service.conversation_summaries(buyer))[0].unread_count == 0
             await NotificationService(repository).mark_read(farmer, notifications[0].id)
     finally:
         async with database.session() as session:

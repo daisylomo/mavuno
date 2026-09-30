@@ -16,6 +16,7 @@ import { Colors } from '../../constants/theme';
 import { farmerService } from '../../services/farmer-service';
 import { AppUser, userService } from '../../services/user-service';
 import { FarmerStats, ListingStatus, ProduceListing } from '../../types/farmer';
+import MarketplaceLinks from '@/components/marketplace-links';
 
 const PRODUCE_IMAGES: Record<string, any> = {
   tomatoes: require('@/assets/products/tomatoes.jpg'),
@@ -142,6 +143,7 @@ export default function FarmerDashboard() {
 
   const renderHeader = () => (
     <View>
+      <View style={{ padding: 16 }}><MarketplaceLinks /></View>
       {/* Farm Banner */}
       <View style={styles.welcomeBanner}>
         <View style={styles.bannerTop}>

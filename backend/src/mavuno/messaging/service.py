@@ -19,6 +19,7 @@ from mavuno.messaging.provider import PushPayload, PushProvider
 from mavuno.messaging.repository import MessagingRepository
 from mavuno.messaging.schemas import (
     ConversationCreate,
+    ConversationSummary,
     MessagePage,
     NotificationPreferencesResponse,
     NotificationPreferencesUpdate,
@@ -107,6 +108,26 @@ class MessagingService:
     async def list_conversations(self, user: AuthenticatedUser) -> list[Conversation]:
         return await self.repository.conversations(user.id)
 
+    async def conversation_summaries(self, user: AuthenticatedUser) -> list[ConversationSummary]:
+        rows = await self.repository.conversation_summaries(user.id)
+        return [
+            ConversationSummary(
+                id=conversation.id,
+                scope_type=conversation.scope_type,
+                scope_id=conversation.scope_id,
+                buyer_id=conversation.buyer_id,
+                farmer_id=conversation.farmer_id,
+                last_message_at=conversation.last_message_at,
+                counterpart_name=name
+                or ("Farmer" if user.id == conversation.buyer_id else "Buyer"),
+                scope_label=title
+                or f"{conversation.scope_type.title()} {str(conversation.scope_id)[:8]}",
+                last_message_preview=body[:160] if body is not None else None,
+                unread_count=count,
+            )
+            for conversation, name, title, body, count in rows
+        ]
+
     async def send(
         self, user: AuthenticatedUser, conversation_id: UUID, client_id: UUID, body: str
     ) -> Message:
@@ -175,11 +196,20 @@ class MessagingService:
         return message
 
     async def messages(
-        self, user: AuthenticatedUser, conversation_id: UUID, cursor: UUID | None, limit: int
+        self,
+        user: AuthenticatedUser,
+        conversation_id: UUID,
+        cursor: UUID | None,
+        limit: int,
+        latest_first: bool = False,
     ) -> MessagePage:
         if await self.repository.conversation(conversation_id, user.id) is None:
             raise not_found()
-        values = await self.repository.messages(conversation_id, cursor, limit)
+        values = (
+            await self.repository.messages(conversation_id, cursor, limit, latest_first=True)
+            if latest_first
+            else await self.repository.messages(conversation_id, cursor, limit)
+        )
         more = len(values) > limit
         items = values[:limit]
         return MessagePage(items=items, next_cursor=items[-1].id if more and items else None)
@@ -205,7 +235,10 @@ class MessagingService:
                 read_at=message.created_at,
             )
             self.repository.add(state)
-        elif message.created_at >= state.read_at:
+        elif message.created_at > state.read_at or (
+            message.created_at == state.read_at
+            and (state.last_read_message_id is None or message.id > state.last_read_message_id)
+        ):
             state.last_read_message_id = message.id
             state.read_at = message.created_at
         await self.repository.commit()

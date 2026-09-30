@@ -1,4 +1,6 @@
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import MarketplaceLinks from '@/components/marketplace-links';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -142,6 +144,7 @@ function Price({ listing }: { listing: Listing }) {
 }
 
 export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryError, setCategoryError] = useState<string | null>(null);
@@ -442,6 +445,7 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
     <View style={styles.page}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
+          <MarketplaceLinks />
           <View style={styles.topRow}>
             <Text style={styles.liveBadge}>LIVE CATALOG</Text>
           </View>
@@ -494,6 +498,11 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
             {order && <>
               <Text style={styles.productName}>Order {order.id.slice(0, 8)} · {order.status.replace(/_/g, ' ')}</Text>
               <Text style={styles.price}>Total: {order.currency} {order.total_amount}</Text>
+              {[...new Set((order.items ?? []).map(item => item.farmer_id))].map(farmerId => (
+                <Pressable key={farmerId} accessibilityRole="button" onPress={() => router.push({ pathname: '/messages/start', params: { scope: 'order', scopeId: order.id, farmerId } })} style={styles.loadMore}>
+                  <Text style={styles.loadMoreText}>Message farmer · {(order.items ?? []).filter(item => item.farmer_id === farmerId).map(item => item.listing_title).join(', ')}</Text>
+                </Pressable>
+              ))}
               {!!order.subtotal_amount && Number(order.subtotal_amount) !== Number(order.total_amount) && (
                 <Text style={styles.muted}>
                   Items come to {order.currency} {order.subtotal_amount}; M-PESA charges whole shillings, so
@@ -721,6 +730,12 @@ export default function CustomerLiveCatalog({ baseUrl }: { baseUrl: string }) {
                 <Text style={styles.description}>{selected.description || 'No description provided.'}</Text>
                 <Price listing={selected} />
                 <Text style={styles.muted}>{formatQuantity(selected.available_quantity)} {selected.quantity_unit} available</Text>
+                <Pressable accessibilityRole="button" style={styles.loadMore} onPress={() => { setSelectedId(null); router.push({ pathname: '/messages/start', params: { scope: 'listing', scopeId: selected.id } }); }}>
+                  <Text style={styles.loadMoreText}>Message this farmer</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" style={styles.loadMore} onPress={() => { setSelectedId(null); router.push({ pathname: '/premium/request', params: { listingId: selected.id } }); }}>
+                  <Text style={styles.loadMoreText}>Request a future harvest</Text>
+                </Pressable>
                 {!!(harvestLabel(selected.harvest_date)) && (
                   <Text style={styles.muted}>🌾 {harvestLabel(selected.harvest_date)}</Text>
                 )}

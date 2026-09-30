@@ -12,7 +12,7 @@ function lock() {
   byId('workspace').hidden = true;
   byId('signin').hidden = false;
   byId('logout').hidden = true;
-  for (const id of ['categories', 'products', 'refunds', 'category-select']) byId(id).replaceChildren();
+  for (const id of ['categories', 'products', 'refunds', 'plans', 'category-select']) byId(id).replaceChildren();
 }
 async function request(path, options = {}, retry = true) {
   const response = await fetch('/api/v1' + path, {
@@ -44,10 +44,12 @@ function table(id, rows, columns) {
   wrapper.append(grid); target.append(wrapper);
 }
 async function load() {
-  const [categories, products, refunds] = await Promise.all([request('/catalog/categories'), request('/catalog/products'), request('/admin/refunds')]);
+  const [categories, products, refunds, plans, availability] = await Promise.all([request('/catalog/categories'), request('/catalog/products'), request('/admin/refunds'), request('/premium/plans'), request('/premium/availability')]);
   if (!session) return;
   table('categories', categories, [['Name', 'name'], ['Slug', 'slug']]);
   table('products', products, [['Name', 'name'], ['Slug', 'slug'], ['Unit', 'default_unit']]);
+  table('plans', plans.map(plan => ({...plan, price: plan.currency + ' ' + plan.price_amount + '/' + plan.billing_interval, features: plan.features.join(', ')})), [['Name', 'name'], ['Code', 'code'], ['Audience', 'audience'], ['Price', 'price'], ['Features', 'features'], ['Active', 'active']]);
+  byId('premium-availability').textContent = availability.subscriptions_available ? 'Subscription provider is enabled. Entitlements require provider verification.' : 'Subscription provider is unavailable. Customers can view plans but cannot start subscriptions.';
   byId('category-select').replaceChildren();
   for (const category of categories) { const option = document.createElement('option'); option.value = category.id; option.textContent = category.name; byId('category-select').append(option); }
   byId('refunds').replaceChildren();
@@ -99,3 +101,10 @@ byId('logout').addEventListener('click', event => run(event.currentTarget, async
   try { if (session) await request('/auth/logout', {method: 'POST', body: {refresh_token: session.refresh_token}}, false); }
   finally { lock(); message('Signed out.'); }
 }));
+byId('plan').addEventListener('submit', event => {
+  event.preventDefault(); const form = event.currentTarget;
+  const fields = new FormData(form);
+  const body = {...Object.fromEntries(fields), features: fields.getAll('features')};
+  if (!body.features.length) { message('Choose at least one feature.', true); return; }
+  run(form.querySelector('button'), async () => { await request('/premium/plans', {method: 'POST', body}); form.reset(); await load(); message('Premium plan created.'); });
+});

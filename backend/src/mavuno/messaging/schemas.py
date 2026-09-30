@@ -27,6 +27,13 @@ class MessageCreate(BaseModel):
     body: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
 
 
+class ConversationSummary(ConversationResponse):
+    counterpart_name: str
+    scope_label: str
+    last_message_preview: str | None
+    unread_count: int
+
+
 class MessageResponse(BaseModel):
     id: UUID
     conversation_id: UUID
