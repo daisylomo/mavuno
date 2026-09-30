@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +16,7 @@ import { isBackendConfigured } from '@/services/auth-api';
 import { reservationDeadline } from '@/components/listing-details';
 
 export default function FarmerOrdersScreen() {
+  const router = useRouter();
   const [orders, setOrders] = useState<FarmerOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +133,9 @@ export default function FarmerOrdersScreen() {
           </Text>
         )}
 
+        {isBackendConfigured() && <TouchableOpacity accessibilityRole="button" style={styles.actionBtn} onPress={() => router.push({ pathname: '/messages/start', params: { scope: 'order', scopeId: item.id } })}>
+          <Text style={{ color: '#216647', fontWeight: '700' }}>Message buyer</Text>
+        </TouchableOpacity>}
         {/* Customer Details */}
         <View style={styles.customerBox}>
           <Text style={styles.customerName}>👤 {item.customerName}</Text>

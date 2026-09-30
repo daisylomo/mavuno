@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mavuno.db.models import (
@@ -19,6 +19,7 @@ from mavuno.db.models import (
     Order,
     OrderItem,
     OutboxJob,
+    Profile,
 )
 
 
@@ -108,7 +109,7 @@ class MessagingRepository:
         )
 
     async def messages(
-        self, conversation_id: UUID, cursor: UUID | None, limit: int
+        self, conversation_id: UUID, cursor: UUID | None, limit: int, *, latest_first: bool = False
     ) -> list[Message]:
         query = select(Message).where(Message.conversation_id == conversation_id)
         if cursor is not None:
@@ -116,15 +117,81 @@ class MessagingRepository:
             if anchor is not None and anchor.conversation_id == conversation_id:
                 query = query.where(
                     or_(
-                        Message.created_at > anchor.created_at,
-                        and_(Message.created_at == anchor.created_at, Message.id > anchor.id),
+                        Message.created_at < anchor.created_at
+                        if latest_first
+                        else Message.created_at > anchor.created_at,
+                        and_(
+                            Message.created_at == anchor.created_at,
+                            Message.id < anchor.id if latest_first else Message.id > anchor.id,
+                        ),
                     )
                 )
         return list(
             await self.session.scalars(
-                query.order_by(Message.created_at, Message.id).limit(limit + 1)
+                query.order_by(
+                    Message.created_at.desc() if latest_first else Message.created_at,
+                    Message.id.desc() if latest_first else Message.id,
+                ).limit(limit + 1)
             )
         )
+
+    async def conversation_summaries(
+        self, user_id: UUID
+    ) -> list[tuple[Conversation, str | None, str | None, str | None, int]]:
+        last_body = (
+            select(Message.body)
+            .where(Message.conversation_id == Conversation.id)
+            .order_by(Message.created_at.desc(), Message.id.desc())
+            .limit(1)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+        unread = (
+            select(func.count(Message.id))
+            .where(
+                Message.conversation_id == Conversation.id,
+                Message.sender_id != user_id,
+                or_(
+                    ConversationReadState.last_read_message_id.is_(None),
+                    Message.created_at > ConversationReadState.read_at,
+                    and_(
+                        Message.created_at == ConversationReadState.read_at,
+                        Message.id > ConversationReadState.last_read_message_id,
+                    ),
+                ),
+            )
+            .correlate(Conversation, ConversationReadState)
+            .scalar_subquery()
+        )
+        query = (
+            select(Conversation, Profile.display_name, Listing.title, last_body, unread)
+            .outerjoin(
+                Profile,
+                Profile.user_id
+                == case(
+                    (Conversation.buyer_id == user_id, Conversation.farmer_id),
+                    else_=Conversation.buyer_id,
+                ),
+            )
+            .outerjoin(
+                Listing,
+                and_(Conversation.scope_type == "listing", Listing.id == Conversation.scope_id),
+            )
+            .outerjoin(
+                ConversationReadState,
+                and_(
+                    ConversationReadState.conversation_id == Conversation.id,
+                    ConversationReadState.user_id == user_id,
+                ),
+            )
+            .where(or_(Conversation.buyer_id == user_id, Conversation.farmer_id == user_id))
+            .order_by(Conversation.last_message_at.desc(), Conversation.id.desc())
+            .limit(100)
+        )
+        return [
+            (row[0], row[1], row[2], row[3], int(row[4]))
+            for row in await self.session.execute(query)
+        ]
 
     async def message(self, message_id: UUID, conversation_id: UUID) -> Message | None:
         return cast(

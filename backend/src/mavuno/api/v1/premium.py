@@ -26,6 +26,12 @@ AdminUser = Annotated[AuthenticatedUser, Depends(require_roles("administrator"))
 IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=128)]
 
 
+@router.get("/premium/availability")
+async def premium_availability(request: Request) -> dict[str, bool]:
+    """Expose purchase availability without leaking provider configuration."""
+    return {"subscriptions_available": request.app.state.settings.premium_enabled}
+
+
 @router.get("/premium/plans", response_model=list[PlanResponse])
 async def list_plans(session: DatabaseSession, request: Request) -> object:
     return await SubscriptionService(PremiumRepository(session), request.app.state.settings).plans()

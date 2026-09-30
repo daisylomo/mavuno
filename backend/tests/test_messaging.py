@@ -188,6 +188,12 @@ async def test_message_polling_and_read_marker_validation() -> None:
     repo.read_state = AsyncMock(return_value=None)
     state = await MessagingService(repo).mark_read(actor, conversation.id, message.id)
     assert state.last_read_message_id == message.id
+    repo.read_state.return_value = state
+    higher, lower = sorted([uuid4(), uuid4()], reverse=True)
+    state.last_read_message_id = higher
+    message.id = lower
+    await MessagingService(repo).mark_read(actor, conversation.id, message.id)
+    assert state.last_read_message_id == higher
 
 
 @pytest.mark.anyio

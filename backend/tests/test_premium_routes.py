@@ -49,6 +49,7 @@ async def test_premium_routes_delegate_to_domain_services(monkeypatch: pytest.Mo
     monkeypatch.setattr(premium, "InsightsService", lambda *_args: insights)
 
     assert await premium.list_plans(session, request) == ["plan"]
+    assert await premium.premium_availability(request) == {"subscriptions_available": False}
     plan_payload = PlanCreate(
         code="buyer-pro",
         name="Buyer Pro",
