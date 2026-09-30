@@ -47,7 +47,6 @@ export default function Membership() {
     <View style={ui.row}><Button title="Harvest requests" onPress={() => router.push('/premium/prebookings')} secondary />
       {audience === 'farmer' && <Button title="Farm insights" onPress={() => router.push('/premium/insights')} secondary />}</View>
     <Button title="Refresh membership" onPress={() => void membership.refresh()} disabled={membership.loading || busy} secondary />
-    <Button title="Upgrade with RevenueCat" onPress={() => router.push('/premium/upgrade')} />
     <Feedback loading={!data && membership.loading} error={membership.error || user.error} retry={() => { void user.refresh(); void membership.refresh(); }} />
     {!!error && <Text accessibilityRole="alert" style={ui.error}>{error}</Text>}
     {!!notice && <Text style={ui.badge}>{notice}</Text>}
