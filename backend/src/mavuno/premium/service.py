@@ -18,7 +18,16 @@ from mavuno.premium.provider import (
     SubscriptionStatus,
 )
 from mavuno.premium.repository import PremiumRepository
+from mavuno.premium.revenuecat import (
+    LIFETIME_PERIOD_END,
+    REVENUECAT_PROVIDER,
+    STORE_PLAN_CODES,
+    RevenueCatClient,
+    RevenueCatError,
+    StoreClient,
+)
 from mavuno.premium.schemas import (
+    EntitlementsResponse,
     FarmerInsightsResponse,
     PlanCreate,
     PrebookingCreate,
@@ -74,7 +83,7 @@ class SubscriptionService:
         if existing is not None and existing.provider_subscription_ref is not None:
             return existing
         plan = await self.repository.plan(plan_id)
-        if plan is None or not plan.active:
+        if plan is None or not plan.active or plan.code in STORE_PLAN_CODES.values():
             raise ApiError(status_code=404, code="plan_not_found", message="Plan was not found")
         if plan.audience not in user.roles:
             raise ApiError(
@@ -251,6 +260,177 @@ class SubscriptionService:
     async def _close(provider: PremiumProvider | None) -> None:
         if isinstance(provider, HttpPremiumProvider):
             await provider.aclose()
+
+
+class EntitlementService:
+    def __init__(self, repository: PremiumRepository, settings: Settings) -> None:
+        self.repository = repository
+        self.settings = settings
+
+    async def current(self, user_id: UUID) -> EntitlementsResponse:
+        active = await self.repository.active_subscriptions(user_id, _now())
+        features = sorted({feature for _, plan in active for feature in plan.features})
+        latest = max(
+            (subscription for subscription, _ in active),
+            key=lambda subscription: subscription.current_period_end or datetime.min,
+            default=None,
+        )
+        return EntitlementsResponse(
+            premium=latest is not None,
+            features=features,
+            provider=latest.provider if latest is not None else None,
+            expires_at=(
+                latest.current_period_end
+                if latest is not None and latest.current_period_end != LIFETIME_PERIOD_END
+                else None
+            ),
+            purchases_available=self.settings.store_purchases_enabled,
+        )
+
+
+class StoreSubscriptionService:
+    """Mirrors RevenueCat store purchases into Mavuno subscriptions.
+
+    The app may ask for a sync and RevenueCat may send webhooks, but neither payload is trusted:
+    the entitlement is always re-read from RevenueCat's REST API with the secret key.
+    """
+
+    def __init__(
+        self,
+        repository: PremiumRepository,
+        settings: Settings,
+        client: StoreClient | None = None,
+    ) -> None:
+        self.repository = repository
+        self.settings = settings
+        self.client = client
+
+    async def sync(self, user_id: UUID) -> Subscription | None:
+        if self.client is None and not self.settings.store_purchases_enabled:
+            raise ApiError(
+                status_code=503,
+                code="store_purchases_unavailable",
+                message="In-app purchases are not available right now",
+            )
+        client: StoreClient | None = None
+        try:
+            client = self._client()
+            entitlement = await client.entitlement(str(user_id))
+        except RevenueCatError as exc:
+            raise ApiError(
+                status_code=503,
+                code="store_purchases_unavailable",
+                message="Purchases cannot be verified right now",
+            ) from exc
+        finally:
+            await self._close(client)
+        subscription = await self.repository.provider_subscription(
+            user_id, REVENUECAT_PROVIDER, lock=True
+        )
+        if entitlement is None:
+            if subscription is not None and subscription.status == "active":
+                subscription.status = "expired"
+                await self.repository.commit()
+            return subscription
+        if subscription is None:
+            is_farmer = await self.repository.user_has_role(user_id, "farmer")
+            plan = await self.repository.plan_by_code(
+                STORE_PLAN_CODES["farmer" if is_farmer else "buyer"]
+            )
+            if plan is None:
+                raise ApiError(
+                    status_code=503,
+                    code="store_purchases_unavailable",
+                    message="Premium is not set up on this server",
+                )
+            subscription = Subscription(
+                id=uuid4(),
+                user_id=user_id,
+                plan_id=plan.id,
+                status="pending",
+                provider=REVENUECAT_PROVIDER,
+                provider_subscription_ref=str(user_id),
+                account_reference=f"RC{user_id.hex.upper()}",
+                idempotency_key=REVENUECAT_PROVIDER,
+            )
+            self.repository.add(subscription)
+        now = _now()
+        active = entitlement.active(now)
+        subscription.status = "active" if active else "expired"
+        subscription.current_period_start = entitlement.purchased_at
+        subscription.current_period_end = entitlement.expires_at or LIFETIME_PERIOD_END
+        if active:
+            subscription.verified_at = now
+        try:
+            await self.repository.commit()
+        except IntegrityError:
+            # A concurrent sync (app and webhook together) created the record first.
+            await self.repository.rollback()
+            return await self.repository.provider_subscription(user_id, REVENUECAT_PROVIDER)
+        await self.repository.refresh(subscription)
+        return subscription
+
+    async def webhook(self, authorization: str, payload: dict[str, object]) -> None:
+        expected = self.settings.revenuecat_webhook_authorization
+        supplied = authorization.removeprefix("Bearer ").strip()
+        if expected is None or not hmac.compare_digest(supplied, expected.get_secret_value()):
+            raise ApiError(status_code=404, code="webhook_not_found", message="Webhook not found")
+        event = payload.get("event")
+        if not isinstance(event, dict):
+            raise ApiError(
+                status_code=422, code="invalid_store_webhook", message="Store webhook is invalid"
+            )
+        event_ref = str(event.get("id", ""))
+        event_type = str(event.get("type", "unknown"))
+        for user_id in await self._known_users(event):
+            subscription = await self.sync(user_id)
+            if subscription is None or not event_ref:
+                continue
+            self.repository.add(
+                SubscriptionEvent(
+                    id=uuid4(),
+                    subscription_id=subscription.id,
+                    provider=REVENUECAT_PROVIDER,
+                    provider_event_ref=f"{event_ref}:{user_id}"[:160],
+                    event_type=event_type[:48],
+                    payload_redacted={
+                        "event_id": event_ref,
+                        "type": event_type,
+                        "product_id": str(event.get("product_id", "")),
+                        "store": str(event.get("store", "")),
+                    },
+                )
+            )
+            try:
+                await self.repository.commit()
+            except IntegrityError:
+                # RevenueCat retried an event that is already recorded.
+                await self.repository.rollback()
+
+    async def _known_users(self, event: dict[object, object]) -> list[UUID]:
+        """Mavuno users named by the event; anonymous store identities are ignored."""
+        candidates: list[object] = [event.get("app_user_id"), event.get("original_app_user_id")]
+        for key in ("aliases", "transferred_from", "transferred_to"):
+            values = event.get(key)
+            if isinstance(values, list):
+                candidates.extend(values)
+        users: list[UUID] = []
+        for candidate in candidates:
+            try:
+                user_id = UUID(str(candidate))
+            except ValueError:
+                continue
+            if user_id not in users and await self.repository.user_exists(user_id):
+                users.append(user_id)
+        return users
+
+    def _client(self) -> StoreClient:
+        return self.client or RevenueCatClient(self.settings)
+
+    @staticmethod
+    async def _close(client: StoreClient | None) -> None:
+        if isinstance(client, RevenueCatClient):
+            await client.aclose()
 
 
 class PrebookingService:

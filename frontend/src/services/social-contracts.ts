@@ -14,6 +14,9 @@ export type Plan = { id: string; name: string; audience: 'buyer' | 'farmer'; act
   price_amount: string; currency: string; billing_interval: 'month' | 'year'; features: string[] };
 export type Subscription = { id: string; plan_id: string; status: string; account_reference: string;
   verified_at: string | null; current_period_start: string | null; current_period_end: string | null };
+export type PremiumFeature = 'prebooking' | 'insights';
+export type Entitlements = { premium: boolean; features: string[]; provider: string | null;
+  expires_at: string | null; purchases_available: boolean };
 export type Prebooking = { id: string; buyer_id: string; farmer_id: string; product_id: string;
   listing_id: string | null; quantity: string; quantity_unit: Unit; target_price: string | null;
   currency: string; window_start: string; window_end: string; notes: string | null;
@@ -42,10 +45,9 @@ export function mergeMessages(current: Message[], incoming: Message[]): Message[
   return [...unique.values()].sort((a, b) => instant(a.created_at) - instant(b.created_at) || a.id.localeCompare(b.id));
 }
 
-export function hasFeature(subscriptions: Subscription[], plans: Plan[], feature: string, now = Date.now()): boolean {
-  return subscriptions.some(subscription => subscription.status === 'active' && !!subscription.verified_at &&
-    !!subscription.current_period_end && instant(subscription.current_period_end) > now &&
-    plans.some(plan => plan.id === subscription.plan_id && plan.active && plan.features.includes(feature)));
+/** Premium is decided by the backend; store purchases count only once it has verified them. */
+export function hasEntitlement(entitlements: Entitlements | null | undefined, feature: PremiumFeature): boolean {
+  return !!entitlements?.premium && entitlements.features.includes(feature);
 }
 
 export function bookingActions(booking: Prebooking, userId: string): Array<'accepted' | 'rejected' | 'cancelled' | 'fulfilled'> {
@@ -92,6 +94,8 @@ export function createSocialApi(request: Request) {
     plans: () => request<Plan[]>('/premium/plans'),
     subscriptions: () => request<Subscription[]>('/premium/subscriptions'),
     subscribe: (planId: string, key: string) => request<Subscription>('/premium/subscriptions', { method: 'POST', body: { plan_id: uuid(planId) }, idempotencyKey: key }),
+    entitlements: () => request<Entitlements>('/premium/entitlements'),
+    syncStorePurchases: () => request<Entitlements>('/premium/store/sync', { method: 'POST' }),
     bookings: () => request<Prebooking[]>('/prebookings'),
     listing: (id: string) => request<BookingListing>(`/listings/${uuid(id)}`),
     createBooking: (body: { farmer_id: string; product_id: string; listing_id: string; quantity: string; quantity_unit: Unit; target_price: string | null; notes: string | null; window_start: string; window_end: string }) => request<Prebooking>('/prebookings', { method: 'POST', body }),

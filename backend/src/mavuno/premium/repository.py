@@ -16,8 +16,10 @@ from mavuno.db.models import (
     Prebooking,
     Product,
     Subscription,
+    User,
     UserRole,
 )
+from mavuno.premium.revenuecat import STORE_PLAN_CODES
 
 
 class PremiumRepository:
@@ -40,10 +42,33 @@ class PremiumRepository:
         await self.session.refresh(value)
 
     async def plans(self) -> list[Plan]:
-        return list(await self.session.scalars(select(Plan).where(Plan.active.is_(True))))
+        """Plans sold directly by Mavuno; store-managed plans are bought through RevenueCat."""
+        return list(
+            await self.session.scalars(
+                select(Plan).where(
+                    Plan.active.is_(True), Plan.code.not_in(STORE_PLAN_CODES.values())
+                )
+            )
+        )
 
     async def plan(self, plan_id: UUID) -> Plan | None:
         return await self.session.get(Plan, plan_id)
+
+    async def plan_by_code(self, code: str) -> Plan | None:
+        return cast(Plan | None, await self.session.scalar(select(Plan).where(Plan.code == code)))
+
+    async def provider_subscription(
+        self, user_id: UUID, provider: str, *, lock: bool = False
+    ) -> Subscription | None:
+        query = select(Subscription).where(
+            Subscription.user_id == user_id, Subscription.provider == provider
+        )
+        if lock:
+            query = query.with_for_update()
+        return cast(Subscription | None, await self.session.scalar(query.limit(1)))
+
+    async def user_exists(self, user_id: UUID) -> bool:
+        return await self.session.get(User, user_id) is not None
 
     async def subscription(
         self, subscription_id: UUID, *, lock: bool = False
@@ -83,7 +108,9 @@ class PremiumRepository:
             )
         )
 
-    async def entitlement(self, user_id: UUID, feature: str, now: datetime) -> bool:
+    async def active_subscriptions(
+        self, user_id: UUID, now: datetime
+    ) -> list[tuple[Subscription, Plan]]:
         values = await self.session.execute(
             select(Subscription, Plan)
             .join(Plan, Plan.id == Subscription.plan_id)
@@ -95,6 +122,10 @@ class PremiumRepository:
                 Plan.active.is_(True),
             )
         )
+        return [(subscription, plan) for subscription, plan in values.tuples()]
+
+    async def entitlement(self, user_id: UUID, feature: str, now: datetime) -> bool:
+        values = await self.active_subscriptions(user_id, now)
         return any(feature in plan.features for _, plan in values)
 
     async def listing(self, listing_id: UUID) -> Listing | None:

@@ -1,16 +1,18 @@
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { Button, dateText, errorText, Feedback, money, Screen, ui, useLiveData, useMarketplaceUser } from '@/components/marketplace-screen';
 import { socialApi } from '@/services/social-api';
 import { liveRequest } from '@/services/live-api';
-import { bookingActions, Prebooking } from '@/services/social-contracts';
+import { bookingActions, hasEntitlement, Prebooking } from '@/services/social-contracts';
 
 const loadBookings = async () => {
-  const [bookings, products] = await Promise.all([socialApi.bookings(), liveRequest<Array<{ id: string; name: string }>>('/catalog/products')]);
-  return { bookings, products };
+  const [bookings, products, entitlements] = await Promise.all([socialApi.bookings(), liveRequest<Array<{ id: string; name: string }>>('/catalog/products'), socialApi.entitlements()]);
+  return { bookings, products, canRequest: hasEntitlement(entitlements, 'prebooking') };
 };
 const actionLabels = { accepted: 'Accept request', rejected: 'Decline request', cancelled: 'Cancel request', fulfilled: 'Mark fulfilled' };
 export default function HarvestRequests() {
+  const router = useRouter();
   const user = useMarketplaceUser();
   const requests = useLiveData(loadBookings, 15000);
   const [confirm, setConfirm] = useState<{ booking: Prebooking; status: keyof typeof actionLabels } | null>(null);
@@ -29,6 +31,10 @@ export default function HarvestRequests() {
     <Button title="Refresh requests" onPress={() => void requests.refresh()} disabled={requests.loading || busy} secondary />
     <Feedback loading={!requests.value && requests.loading} error={requests.error || user.error} retry={() => { void user.refresh(); void requests.refresh(); }} />
     {!!error && <Text accessibilityRole="alert" style={ui.error}>{error}</Text>}
+    {/* Farmers answer requests for free; sending new ones is the buyer's Premium benefit. */}
+    {user.value?.role === 'customer' && requests.value && !requests.value.canRequest && <View style={ui.card}>
+      <Text style={ui.badge}>Premium feature</Text><Text style={ui.text}>Upgrade to Premium to request new future harvests. Your existing requests stay listed here.</Text>
+      <Button title="Upgrade to Premium" onPress={() => router.push('/premium/upgrade')} /></View>}
     {confirm && <View style={ui.card}><Text style={ui.title}>{actionLabels[confirm.status]}?</Text>
       <Text style={ui.text}>{confirm.status === 'fulfilled' ? 'Confirm this harvest request has already been fulfilled.' : `Confirm this change to request ${confirm.booking.id.slice(0, 8)}.`}</Text>
       <Button title="Confirm change" onPress={() => void transition()} disabled={busy} /><Button title="Keep current status" onPress={() => setConfirm(null)} disabled={busy} secondary /></View>}

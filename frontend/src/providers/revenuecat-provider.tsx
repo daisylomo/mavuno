@@ -19,14 +19,24 @@ import RevenueCatUI, {
   PAYWALL_RESULT,
 } from 'react-native-purchases-ui';
 
+import { isBackendConfigured } from '@/services/auth-api';
+import { Entitlements } from '@/services/social-contracts';
+import { socialApi } from '@/services/social-api';
 import { userService } from '@/services/user-service';
 
+/**
+ * Payment layer only. RevenueCat sells Premium in the app stores; it does not decide who is
+ * Premium. After any purchase, restore or account switch the backend is asked to re-verify the
+ * purchase with RevenueCat, and screens gate on the backend's answer (`/premium/entitlements`).
+ */
 export const MAVUNO_ENTITLEMENT = 'mavuno_premium';
 
 const API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_API_KEY;
 
-function hasPremium(info: CustomerInfo | null): boolean {
-  return Boolean(info?.entitlements.active[MAVUNO_ENTITLEMENT]);
+/** Ask the backend to re-check this account's store purchases and return its verdict. */
+async function syncWithBackend(): Promise<Entitlements | null> {
+  if (!isBackendConfigured()) return null;
+  return socialApi.syncStorePurchases();
 }
 
 function errorMessage(error: unknown): string {
@@ -63,12 +73,12 @@ interface RevenueCatContextValue {
   error: string | null;
   customerInfo: CustomerInfo | null;
   currentOffering: PurchasesOffering | null;
-  isPremium: boolean;
   refresh: () => Promise<CustomerInfo>;
-  purchase: (purchasePackage: PurchasesPackage) => Promise<boolean>;
-  restore: () => Promise<boolean>;
-  presentPaywall: () => Promise<PAYWALL_RESULT>;
-  presentCustomerCenter: () => Promise<void>;
+  /** Each store action resolves to the backend's entitlements after it re-verified the store. */
+  purchase: (purchasePackage: PurchasesPackage) => Promise<Entitlements | null>;
+  restore: () => Promise<Entitlements | null>;
+  presentPaywall: () => Promise<Entitlements | null>;
+  presentCustomerCenter: () => Promise<Entitlements | null>;
   identifyUser: (userId: string) => Promise<void>;
   forgetUser: () => Promise<void>;
 }
@@ -169,6 +179,11 @@ export function RevenueCatProvider({
 
       const result = await Purchases.logIn(userId);
       setCustomerInfo(result.customerInfo);
+      // Purchases made on another device or before signing in now belong to this account.
+      // Best effort: RevenueCat's webhook reaches the backend anyway.
+      await syncWithBackend().catch((syncError: unknown) => {
+        console.warn('Premium sync after sign-in failed:', syncError);
+      });
     } catch (identificationError) {
       setError(errorMessage(identificationError));
       throw identificationError;
@@ -199,9 +214,9 @@ export function RevenueCatProvider({
           await Purchases.purchasePackage(purchasePackage);
 
         setCustomerInfo(result.customerInfo);
-        return hasPremium(result.customerInfo);
+        return await syncWithBackend();
       } catch (purchaseError) {
-        if (wasCancelled(purchaseError)) return false;
+        if (wasCancelled(purchaseError)) return null;
 
         setError(errorMessage(purchaseError));
         throw purchaseError;
@@ -219,7 +234,7 @@ export function RevenueCatProvider({
     try {
       const info = await Purchases.restorePurchases();
       setCustomerInfo(info);
-      return hasPremium(info);
+      return await syncWithBackend();
     } catch (restoreError) {
       setError(errorMessage(restoreError));
       throw restoreError;
@@ -240,12 +255,15 @@ export function RevenueCatProvider({
 
       if (
         result === PAYWALL_RESULT.PURCHASED ||
-        result === PAYWALL_RESULT.RESTORED
+        result === PAYWALL_RESULT.RESTORED ||
+        // The store already holds the entitlement; the backend may simply not know yet.
+        result === PAYWALL_RESULT.NOT_PRESENTED
       ) {
         await refresh();
+        return await syncWithBackend();
       }
 
-      return result;
+      return null;
     } catch (paywallError) {
       setError(errorMessage(paywallError));
       throw paywallError;
@@ -258,6 +276,7 @@ export function RevenueCatProvider({
     try {
       await RevenueCatUI.presentCustomerCenter();
       await refresh();
+      return await syncWithBackend();
     } catch (customerCenterError) {
       setError(errorMessage(customerCenterError));
       throw customerCenterError;
@@ -271,7 +290,6 @@ export function RevenueCatProvider({
       error,
       customerInfo,
       currentOffering,
-      isPremium: hasPremium(customerInfo),
       refresh,
       purchase,
       restore,

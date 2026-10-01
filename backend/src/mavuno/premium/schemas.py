@@ -92,3 +92,13 @@ class FarmerInsightsResponse(BaseModel):
     units_available: Decimal
     completed_order_lines: int
     gross_sales: Decimal
+
+
+class EntitlementsResponse(BaseModel):
+    """What the signed-in user may use right now, decided by the backend alone."""
+
+    premium: bool
+    features: list[str]
+    provider: str | None
+    expires_at: datetime | None
+    purchases_available: bool

@@ -88,6 +88,17 @@ class Settings(BaseSettings):
     premium_callback_token: SecretStr | None = Field(default=None, min_length=32)
     premium_provider_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     premium_reconcile_attempts: int = Field(default=5, ge=1, le=12)
+    # RevenueCat sells Premium through the app stores. The backend never trusts the app's word for
+    # it: purchases are confirmed against RevenueCat's REST API before features unlock.
+    revenuecat_api_base_url: str = "https://api.revenuecat.com"
+    revenuecat_secret_api_key: SecretStr | None = None
+    revenuecat_webhook_authorization: SecretStr | None = Field(default=None, min_length=32)
+    revenuecat_entitlement_id: str = Field(default="mavuno_premium", min_length=1, max_length=64)
+    revenuecat_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+
+    @property
+    def store_purchases_enabled(self) -> bool:
+        return self.revenuecat_secret_api_key is not None
 
     @model_validator(mode="after")
     def validate_auth_keys(self) -> Settings:

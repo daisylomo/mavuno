@@ -3,15 +3,15 @@ import { useCallback, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { Button, errorText, Feedback, Field, Screen, ui, useLiveData } from '@/components/marketplace-screen';
 import { socialApi } from '@/services/social-api';
-import { harvestWindow, hasFeature } from '@/services/social-contracts';
+import { harvestWindow, hasEntitlement } from '@/services/social-contracts';
 import RoleGate from '@/components/role-gate';
 
 export default function RequestHarvest() {
   const { listingId } = useLocalSearchParams<{ listingId: string }>();
   const router = useRouter();
   const load = useCallback(async () => {
-    const [listing, plans, subscriptions] = await Promise.all([socialApi.listing(listingId), socialApi.plans(), socialApi.subscriptions()]);
-    return { listing, entitled: hasFeature(subscriptions, plans, 'prebooking') };
+    const [listing, entitlements] = await Promise.all([socialApi.listing(listingId), socialApi.entitlements()]);
+    return { listing, entitled: hasEntitlement(entitlements, 'prebooking') };
   }, [listingId]);
   const data = useLiveData(load);
   const [quantity, setQuantity] = useState('1');
@@ -41,7 +41,7 @@ export default function RequestHarvest() {
     {data.value && <>
       <Text style={ui.title}>{data.value.listing.title}</Text>
       {!!data.value.listing.farmer && <Text style={ui.text}>Farmer: {data.value.listing.farmer.display_name}</Text>}
-      {!data.value.entitled ? <View style={ui.card}><Text style={ui.text}>Future harvest requests require a verified premium membership with this benefit.</Text><Button title="View premium membership" onPress={() => router.push('/premium')} /></View> : <>
+      {!data.value.entitled ? <View style={ui.card}><Text style={ui.badge}>Premium feature</Text><Text style={ui.text}>Requesting future harvests is part of Mavuno Premium.</Text><Button title="Upgrade to Premium" onPress={() => router.push('/premium/upgrade')} /></View> : <>
         <Text style={ui.muted}>Dates use Kenya time. This request does not reserve stock or collect a payment.</Text>
         <Field label={`Quantity (${data.value.listing.quantity_unit})`} value={quantity} onChangeText={setQuantity} numeric />
         <Field label={`Proposed KES price per ${data.value.listing.quantity_unit} (optional)`} value={price} onChangeText={setPrice} numeric />
