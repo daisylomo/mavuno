@@ -842,6 +842,11 @@
             "title": "Features",
             "type": "array"
           },
+          "mpesa_available": {
+            "default": false,
+            "title": "Mpesa Available",
+            "type": "boolean"
+          },
           "premium": {
             "title": "Premium",
             "type": "boolean"
@@ -2670,6 +2675,27 @@
         "title": "MessageResponse",
         "type": "object"
       },
+      "MpesaPremiumPayment": {
+        "properties": {
+          "phone_e164": {
+            "maxLength": 16,
+            "minLength": 9,
+            "title": "Phone E164",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id",
+          "phone_e164"
+        ],
+        "title": "MpesaPremiumPayment",
+        "type": "object"
+      },
       "NotificationPreferencesResponse": {
         "properties": {
           "messages_push": {
@@ -3938,6 +3964,17 @@
               }
             ],
             "title": "Current Period Start"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
           },
           "id": {
             "format": "uuid",
@@ -6735,6 +6772,114 @@
         ]
       }
     },
+    "/api/v1/premium/mpesa/payments": {
+      "post": {
+        "description": "Send an M-PESA prompt for one prepaid Premium period.",
+        "operationId": "pay_premium_with_mpesa_api_v1_premium_mpesa_payments_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MpesaPremiumPayment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pay Premium With Mpesa",
+        "tags": [
+          "premium"
+        ]
+      }
+    },
+    "/api/v1/premium/mpesa/payments/{subscription_id}": {
+      "get": {
+        "operationId": "refresh_premium_mpesa_payment_api_v1_premium_mpesa_payments__subscription_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "subscription_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subscription Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Refresh Premium Mpesa Payment",
+        "tags": [
+          "premium"
+        ]
+      }
+    },
     "/api/v1/premium/plans": {
       "get": {
         "operationId": "list_plans_api_v1_premium_plans_get",
@@ -7515,6 +7660,52 @@
         "summary": "Daraja Callback",
         "tags": [
           "commerce"
+        ]
+      }
+    },
+    "/api/v1/webhooks/premium/mpesa/{callback_token}": {
+      "post": {
+        "operationId": "premium_mpesa_callback_api_v1_webhooks_premium_mpesa__callback_token__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "callback_token",
+            "required": true,
+            "schema": {
+              "title": "Callback Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Premium Mpesa Callback Api V1 Webhooks Premium Mpesa  Callback Token  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Premium Mpesa Callback",
+        "tags": [
+          "premium"
         ]
       }
     },

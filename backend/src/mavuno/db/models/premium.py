@@ -39,7 +39,7 @@ class Subscription(TimestampMixin, Base):
         ),
         UniqueConstraint("account_reference", name="uq_subscriptions_account_reference"),
         CheckConstraint(
-            "status IN ('pending','active','past_due','cancelled','expired')",
+            "status IN ('pending','active','past_due','cancelled','expired','failed')",
             name="status_allowed",
         ),
         Index("ix_subscriptions_user_status", "user_id", "status"),
@@ -60,6 +60,9 @@ class Subscription(TimestampMixin, Base):
     current_period_end: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6), nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DATETIME(fsp=6), nullable=True)
+    # M-PESA prepaid periods: who was prompted, and why a payment did not unlock Premium.
+    payer_phone_e164: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class SubscriptionEvent(Base):

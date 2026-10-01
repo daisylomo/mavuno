@@ -7,21 +7,31 @@ from uuid import uuid4
 
 import pytest
 from pydantic import SecretStr
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from mavuno.auth.context import AuthenticatedUser
 from mavuno.core.config import Settings
 from mavuno.db import Database
 from mavuno.db.models import (
     Listing,
+    OutboxJob,
     Plan,
     Prebooking,
     ProduceCategory,
     Product,
     Subscription,
+    SubscriptionEvent,
     User,
     UserRole,
 )
+from mavuno.payments.provider import (
+    CallbackEvent,
+    InitiationRequest,
+    InitiationResult,
+    ProviderStatus,
+    ReversalResult,
+)
+from mavuno.premium.mpesa import MPESA_PROVIDER, STATUS_QUERY_JOB, MpesaPremiumService
 from mavuno.premium.repository import PremiumRepository
 from mavuno.premium.revenuecat import REVENUECAT_PROVIDER, STORE_PLAN_CODES, StoreEntitlement
 from mavuno.premium.schemas import PrebookingCreate, PrebookingTransition
@@ -264,5 +274,102 @@ async def test_store_purchase_unlocks_and_lapse_revokes_premium() -> None:
             await session.execute(delete(Subscription).where(Subscription.user_id == farmer_id))
             await session.execute(delete(UserRole).where(UserRole.user_id == farmer_id))
             await session.execute(delete(User).where(User.id == farmer_id))
+            await session.commit()
+        await database.dispose()
+
+
+class _Daraja:
+    name = "daraja"
+
+    async def initiate(self, request: InitiationRequest) -> InitiationResult:
+        return InitiationResult(f"ws_CO_{uuid4().hex}", None, "pending", "0")
+
+    def parse_callback(self, payload: dict[str, object]) -> CallbackEvent:
+        ref = str(payload["ref"])
+        return CallbackEvent(
+            f"{ref}:0", ref, "succeeded", False, {"Amount": "1", "MpesaReceiptNumber": "RCPT"}
+        )
+
+    async def query_status(self, provider_request_ref: str) -> ProviderStatus:
+        # Like Daraja, the query confirms the request but omits amount and receipt.
+        return ProviderStatus(
+            provider_request_ref, "succeeded", None, "KES", None, None, None, "0", "OK"
+        )
+
+    async def reverse(self, transaction_ref: str, amount: Decimal, reason: str) -> ReversalResult:
+        raise NotImplementedError
+
+
+@pytest.mark.anyio
+async def test_mpesa_payment_unlocks_premium_and_renewal_extends_it() -> None:
+    assert TEST_DATABASE_URL is not None
+    token = "c" * 32
+    settings = Settings(
+        environment="test",
+        database_url=SecretStr(TEST_DATABASE_URL),
+        payments_enabled=True,
+        daraja_consumer_key=SecretStr("key"),
+        daraja_consumer_secret=SecretStr("secret"),
+        daraja_shortcode="174379",
+        daraja_passkey=SecretStr("passkey"),
+        daraja_callback_base_url="https://api.example.test",
+        daraja_callback_token=SecretStr(token),
+    )
+    database = Database(settings)
+    buyer_id = uuid4()
+    buyer = AuthenticatedUser(buyer_id, "buyer@example.test", None, frozenset({"buyer"}), 0)
+    try:
+        async with database.session() as session:
+            session.add(
+                User(
+                    id=buyer_id,
+                    email=f"{buyer_id}@example.test",
+                    password_hash="x",
+                    status="active",
+                )
+            )
+            await session.commit()
+
+        async with database.session() as session:
+            repository = PremiumRepository(session)
+            plan = await repository.plan_by_code("mpesa_buyer_monthly")
+            assert plan is not None and plan.price_amount == Decimal("1")
+            assert plan.code in {listed.code for listed in await repository.plans()}
+            service = MpesaPremiumService(repository, settings, _Daraja())
+            first = await service.pay(buyer, plan.id, "0712345678", "premium-first")
+            assert first.status == "pending" and first.provider_subscription_ref is not None
+            assert await repository.open_prompt(
+                buyer_id, MPESA_PROVIDER, _now() - timedelta(minutes=5)
+            )
+            await service.callback(token, {"ref": first.provider_subscription_ref})
+            # A repeated callback is ignored rather than failing.
+            await service.callback(token, {"ref": first.provider_subscription_ref})
+            await service.reconcile(first.id)
+            first_id = first.id
+
+        async with database.session() as session:
+            repository = PremiumRepository(session)
+            current = await EntitlementService(repository, settings).current(buyer_id)
+            assert (
+                current.premium and current.features == ["prebooking"] and current.mpesa_available
+            )
+            paid = await repository.subscription(first_id)
+            assert paid is not None and paid.status == "active" and paid.current_period_end
+            first_end = paid.current_period_end
+            service = MpesaPremiumService(repository, settings, _Daraja())
+            renewal = await service.pay(buyer, paid.plan_id, "+254712345678", "premium-renewal")
+            refreshed = await service.refresh(buyer, renewal.id)
+            assert refreshed.status == "active"
+            assert refreshed.current_period_start == first_end
+            assert refreshed.current_period_end == first_end + timedelta(days=30)
+    finally:
+        async with database.session() as session:
+            ids = select(Subscription.id).where(Subscription.user_id == buyer_id)
+            await session.execute(
+                delete(SubscriptionEvent).where(SubscriptionEvent.subscription_id.in_(ids))
+            )
+            await session.execute(delete(OutboxJob).where(OutboxJob.job_type == STATUS_QUERY_JOB))
+            await session.execute(delete(Subscription).where(Subscription.user_id == buyer_id))
+            await session.execute(delete(User).where(User.id == buyer_id))
             await session.commit()
         await database.dispose()

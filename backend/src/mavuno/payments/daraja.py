@@ -79,7 +79,7 @@ class DarajaProvider:
             "PartyA": phone,
             "PartyB": shortcode,
             "PhoneNumber": phone,
-            "CallBackURL": f"{callback_base}/api/v1/webhooks/payments/daraja/{callback_token}",
+            "CallBackURL": f"{callback_base}{request.callback_path}/{callback_token}",
             "AccountReference": request.account_reference[:12],
             "TransactionDesc": request.description[:13],
         }

@@ -39,8 +39,14 @@ class SubscriptionResponse(BaseModel):
     current_period_end: datetime | None
     verified_at: datetime | None
     created_at: datetime
+    failure_reason: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class MpesaPremiumPayment(BaseModel):
+    plan_id: UUID
+    phone_e164: str = Field(min_length=9, max_length=16)
 
 
 class PrebookingCreate(BaseModel):
@@ -102,3 +108,4 @@ class EntitlementsResponse(BaseModel):
     provider: str | None
     expires_at: datetime | None
     purchases_available: bool
+    mpesa_available: bool = False

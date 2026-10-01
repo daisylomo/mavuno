@@ -285,6 +285,7 @@ class EntitlementService:
                 else None
             ),
             purchases_available=self.settings.store_purchases_enabled,
+            mpesa_available=self.settings.payments_enabled,
         )
 
 

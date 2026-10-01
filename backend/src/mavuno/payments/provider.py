@@ -22,6 +22,8 @@ class InitiationRequest:
     phone_e164: str
     account_reference: str
     description: str
+    # Where Daraja posts the result, before the secret callback token. Orders use the default.
+    callback_path: str = "/api/v1/webhooks/payments/daraja"
 
 
 @dataclass(frozen=True, slots=True)

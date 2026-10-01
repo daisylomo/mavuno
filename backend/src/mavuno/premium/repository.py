@@ -16,6 +16,7 @@ from mavuno.db.models import (
     Prebooking,
     Product,
     Subscription,
+    SubscriptionEvent,
     User,
     UserRole,
 )
@@ -66,6 +67,64 @@ class PremiumRepository:
         if lock:
             query = query.with_for_update()
         return cast(Subscription | None, await self.session.scalar(query.limit(1)))
+
+    async def subscription_by_provider_ref(
+        self, provider: str, provider_subscription_ref: str
+    ) -> Subscription | None:
+        return cast(
+            Subscription | None,
+            await self.session.scalar(
+                select(Subscription).where(
+                    Subscription.provider == provider,
+                    Subscription.provider_subscription_ref == provider_subscription_ref,
+                )
+            ),
+        )
+
+    async def open_prompt(self, user_id: UUID, provider: str, since: datetime) -> bool:
+        """Whether the user has a payment prompt sent after ``since`` that is still unanswered."""
+        return (
+            await self.session.scalar(
+                select(Subscription.id)
+                .where(
+                    Subscription.user_id == user_id,
+                    Subscription.provider == provider,
+                    Subscription.status == "pending",
+                    Subscription.provider_subscription_ref.is_not(None),
+                    Subscription.created_at > since,
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
+    async def paid_until(self, user_id: UUID, provider: str, plan_id: UUID) -> datetime | None:
+        """End of the latest verified period on this plan, so renewals extend it."""
+        return cast(
+            datetime | None,
+            await self.session.scalar(
+                select(func.max(Subscription.current_period_end)).where(
+                    Subscription.user_id == user_id,
+                    Subscription.provider == provider,
+                    Subscription.plan_id == plan_id,
+                    Subscription.status == "active",
+                    Subscription.verified_at.is_not(None),
+                )
+            ),
+        )
+
+    async def success_event(self, subscription_id: UUID) -> SubscriptionEvent | None:
+        return cast(
+            SubscriptionEvent | None,
+            await self.session.scalar(
+                select(SubscriptionEvent)
+                .where(
+                    SubscriptionEvent.subscription_id == subscription_id,
+                    SubscriptionEvent.event_type == "succeeded",
+                )
+                .limit(1)
+            ),
+        )
 
     async def user_exists(self, user_id: UUID) -> bool:
         return await self.session.get(User, user_id) is not None

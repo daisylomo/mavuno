@@ -18,6 +18,7 @@ from mavuno.messaging.provider import HttpPushProvider, PushProviderError
 from mavuno.messaging.repository import MessagingRepository
 from mavuno.messaging.service import NotificationDeliveryService
 from mavuno.payments.provider import PaymentProviderError
+from mavuno.premium.mpesa import STATUS_QUERY_JOB, MpesaPremiumService
 from mavuno.premium.provider import PremiumProviderError
 from mavuno.premium.repository import PremiumRepository
 from mavuno.premium.service import SubscriptionService
@@ -100,6 +101,10 @@ async def process_batch(database: Database, settings: Settings) -> int:
                     await NotificationDeliveryService(
                         messaging_repository, provider, protector
                     ).deliver(UUID(str(job.payload["notification_id"])))
+                elif job.job_type == STATUS_QUERY_JOB:
+                    await MpesaPremiumService(PremiumRepository(session), settings).reconcile(
+                        UUID(str(job.payload["subscription_id"]))
+                    )
                 elif job.job_type == "subscription_status_query":
                     await SubscriptionService(PremiumRepository(session), settings).reconcile(
                         UUID(str(job.payload["subscription_id"]))

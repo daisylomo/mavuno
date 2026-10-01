@@ -8,10 +8,12 @@ from fastapi import APIRouter, Depends, Header, Request, status
 
 from mavuno.api.dependencies import CurrentUser, DatabaseSession, require_roles
 from mavuno.auth.context import AuthenticatedUser
+from mavuno.premium.mpesa import MpesaPremiumService
 from mavuno.premium.repository import PremiumRepository
 from mavuno.premium.schemas import (
     EntitlementsResponse,
     FarmerInsightsResponse,
+    MpesaPremiumPayment,
     PlanCreate,
     PlanResponse,
     PrebookingCreate,
@@ -132,6 +134,49 @@ async def revenuecat_webhook(
         payload = {}
     await StoreSubscriptionService(PremiumRepository(session), request.app.state.settings).webhook(
         authorization, payload
+    )
+    return {"accepted": True}
+
+
+@router.post(
+    "/premium/mpesa/payments",
+    response_model=SubscriptionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def pay_premium_with_mpesa(
+    payload: MpesaPremiumPayment,
+    idempotency_key: IdempotencyKey,
+    current_user: CurrentUser,
+    session: DatabaseSession,
+    request: Request,
+) -> object:
+    """Send an M-PESA prompt for one prepaid Premium period."""
+    return await MpesaPremiumService(PremiumRepository(session), request.app.state.settings).pay(
+        current_user, payload.plan_id, payload.phone_e164, idempotency_key
+    )
+
+
+@router.get("/premium/mpesa/payments/{subscription_id}", response_model=SubscriptionResponse)
+async def refresh_premium_mpesa_payment(
+    subscription_id: UUID, current_user: CurrentUser, session: DatabaseSession, request: Request
+) -> object:
+    return await MpesaPremiumService(
+        PremiumRepository(session), request.app.state.settings
+    ).refresh(current_user, subscription_id)
+
+
+@router.post("/webhooks/premium/mpesa/{callback_token}", status_code=202)
+async def premium_mpesa_callback(
+    callback_token: str, request: Request, session: DatabaseSession
+) -> dict[str, bool]:
+    try:
+        payload = json.loads(await request.body())
+    except (ValueError, UnicodeDecodeError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    await MpesaPremiumService(PremiumRepository(session), request.app.state.settings).callback(
+        callback_token, payload
     )
     return {"accepted": True}
 
