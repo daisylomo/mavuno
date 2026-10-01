@@ -20,12 +20,12 @@ test('farmer plans define exactly 3 distinct tiers: starter, plus, and biashara'
   assert.equal(FARMER_PLANS.plus.monthlyPrice, 499);
   assert.ok(FARMER_PLANS.plus.maxListings > 1000);
   assert.equal(FARMER_PLANS.plus.commissionRate, 0.06);
-  assert.deepEqual(FARMER_PLANS.plus.features, ['prebooking']);
+  assert.deepEqual(FARMER_PLANS.plus.features, ['insights']);
 
   assert.equal(FARMER_PLANS.biashara.monthlyPrice, 1499);
   assert.ok(FARMER_PLANS.biashara.maxListings > 1000);
   assert.equal(FARMER_PLANS.biashara.commissionRate, 0.03);
-  assert.deepEqual(FARMER_PLANS.biashara.features, ['prebooking', 'insights']);
+  assert.deepEqual(FARMER_PLANS.biashara.features, ['insights']);
 });
 
 test('annual billing offers 20% discount on paid tiers', () => {

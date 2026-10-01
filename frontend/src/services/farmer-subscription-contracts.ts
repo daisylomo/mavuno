@@ -93,14 +93,14 @@ export const FARMER_PLANS: Record<FarmerTierCode, FarmerTierPlan> = {
         icon: '✅',
       },
       {
-        title: 'Harvest Pre-Bookings',
-        subtitle: 'Allow buyers to pre-order future harvests',
+        title: 'Wholesale Price Benchmarks',
+        subtitle: 'Access real-time commodity prices and demand data',
         included: false,
-        icon: '📅',
+        icon: '🌾',
       },
       {
         title: 'Market Intelligence & Price Analytics',
-        subtitle: 'Access real-time commodity prices and demand data',
+        subtitle: 'Real-time sales and regional demand analytics',
         included: false,
         icon: '📊',
       },
@@ -116,7 +116,7 @@ export const FARMER_PLANS: Record<FarmerTierCode, FarmerTierPlan> = {
     tier: 'plus',
     code: 'mkulima-plus',
     name: 'Mkulima Plus',
-    tagline: 'Scale your farm with unlimited listings & harvest pre-orders',
+    tagline: 'Scale your farm with unlimited listings & wholesale price benchmarks',
     monthlyPrice: 499,
     annualPrice: 4790, // Save 20%
     currency: 'KES',
@@ -125,7 +125,7 @@ export const FARMER_PLANS: Record<FarmerTierCode, FarmerTierPlan> = {
     commissionLabel: '6% Platform Fee (Save 4%)',
     badge: 'Popular ⭐',
     recommended: true,
-    features: ['prebooking'],
+    features: ['insights'],
     featureList: [
       {
         title: 'Unlimited Produce Listings',
@@ -140,10 +140,10 @@ export const FARMER_PLANS: Record<FarmerTierCode, FarmerTierPlan> = {
         icon: '✅',
       },
       {
-        title: 'Harvest Pre-Bookings 📅',
-        subtitle: 'Pre-sell produce to buyers weeks before harvest',
+        title: 'Wholesale Price Benchmarks 🌾',
+        subtitle: 'Nairobi & regional commodity price trends and demand alerts',
         included: true,
-        icon: '📅',
+        icon: '🌾',
       },
       {
         title: 'Priority Marketplace Ranking ⭐',
@@ -164,10 +164,10 @@ export const FARMER_PLANS: Record<FarmerTierCode, FarmerTierPlan> = {
         icon: '📲',
       },
       {
-        title: 'Market Intelligence & Price Analytics',
+        title: 'Lowest 3% Platform Fee',
         subtitle: 'Available on Mkulima Biashara tier',
         included: false,
-        icon: '📊',
+        icon: '🏆',
       },
       {
         title: 'Instant M-Pesa Settlement',
@@ -181,7 +181,7 @@ export const FARMER_PLANS: Record<FarmerTierCode, FarmerTierPlan> = {
     tier: 'biashara',
     code: 'mkulima-biashara',
     name: 'Mkulima Biashara',
-    tagline: 'Commercial powerhouse with market intelligence & lowest 3% fee',
+    tagline: 'Commercial powerhouse with wholesale benchmarks & lowest 3% fee',
     monthlyPrice: 1499,
     annualPrice: 14390, // Save 20%
     currency: 'KES',
@@ -189,17 +189,23 @@ export const FARMER_PLANS: Record<FarmerTierCode, FarmerTierPlan> = {
     commissionRate: 0.03,
     commissionLabel: '3% Platform Fee (Save 7%)',
     badge: 'Commercial Pro 👑',
-    features: ['prebooking', 'insights'],
+    features: ['insights'],
     featureList: [
       {
         title: 'All Mkulima Plus Features Included',
-        subtitle: 'Unlimited listings, verified badge, pre-bookings',
+        subtitle: 'Unlimited listings, verified badge, wholesale benchmarks',
         included: true,
         icon: '🌟',
       },
       {
-        title: 'Market Intelligence & Price Analytics 📊',
-        subtitle: 'Real-time sales, price benchmarks, and regional demand trends',
+        title: 'Wholesale Price Benchmarks 🌾',
+        subtitle: 'Real-time urban market benchmarks and commodity forecasts',
+        included: true,
+        icon: '🌾',
+      },
+      {
+        title: 'Live Farm Analytics & Sales Insights 📊',
+        subtitle: 'Real-time gross sales, volume, and order line tracking',
         included: true,
         icon: '📊',
       },

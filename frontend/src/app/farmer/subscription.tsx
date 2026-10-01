@@ -24,7 +24,7 @@ import {
 } from '@/services/farmer-subscription-contracts';
 import { farmerSubscriptionService } from '@/services/farmer-subscription-service';
 import { userService } from '@/services/user-service';
-import { Insights, Prebooking } from '@/services/social-contracts';
+import { Insights } from '@/services/social-contracts';
 
 const COMMODITY_TRENDS = [
   { item: 'Tomatoes (kg)', avgPrice: 'KES 95/kg', trend: '+12% this week', direction: 'up' },
@@ -42,8 +42,7 @@ export default function FarmerSubscriptionScreen() {
   const [subscription, setSubscription] = useState<ActiveFarmerSubscription | null>(null);
   const [billingInterval, setBillingInterval] = useState<BillingInterval>('month');
   const [insights, setInsights] = useState<Insights | null>(null);
-  const [prebookings, setPrebookings] = useState<Prebooking[]>([]);
-  const [activeTab, setActiveTab] = useState<'plans' | 'insights' | 'prebookings'>('plans');
+  const [activeTab, setActiveTab] = useState<'plans' | 'insights'>('plans');
 
   // Checkout Modal State
   const [checkoutModalVisible, setCheckoutModalVisible] = useState(false);
@@ -64,14 +63,10 @@ export default function FarmerSubscriptionScreen() {
         setMpesaPhone(currentUser.phone);
       }
 
-      // If entitled, load insights and prebookings
-      if (currentSub.tier === 'biashara') {
+      // If entitled (Plus or Biashara), load real insights
+      if (currentSub.tier === 'plus' || currentSub.tier === 'biashara') {
         const ins = await farmerSubscriptionService.getInsights();
         setInsights(ins);
-      }
-      if (currentSub.tier === 'plus' || currentSub.tier === 'biashara') {
-        const pb = await farmerSubscriptionService.getPrebookings();
-        setPrebookings(pb);
       }
     } catch (err) {
       console.warn('Error loading subscription data:', err);
@@ -164,13 +159,11 @@ export default function FarmerSubscriptionScreen() {
         `🎉 Payment of KES ${billingInterval === 'month' ? selectedPlanForUpgrade.monthlyPrice : selectedPlanForUpgrade.annualPrice} received! Welcome to ${selectedPlanForUpgrade.name}.`
       );
 
-      // Refresh insights or prebookings if unlocked
-      if (selectedPlanForUpgrade.tier === 'biashara') {
+      // Refresh insights if unlocked
+      if (selectedPlanForUpgrade.tier === 'plus' || selectedPlanForUpgrade.tier === 'biashara') {
         const ins = await farmerSubscriptionService.getInsights();
         setInsights(ins);
       }
-      const pb = await farmerSubscriptionService.getPrebookings();
-      setPrebookings(pb);
 
       setTimeout(() => {
         setPaymentSuccessMessage(null);
@@ -181,16 +174,6 @@ export default function FarmerSubscriptionScreen() {
       Alert.alert('Payment Error', 'Could not process subscription. Please check connection and try again.');
     } finally {
       setIsProcessingPayment(false);
-    }
-  };
-
-  const handleBookingAction = async (booking: Prebooking, nextStatus: 'accepted' | 'rejected' | 'fulfilled') => {
-    try {
-      const updated = await farmerSubscriptionService.transitionPrebooking(booking, nextStatus);
-      setPrebookings((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
-      Alert.alert('Reservation Updated', `Harvest pre-booking has been marked as ${nextStatus}.`);
-    } catch {
-      Alert.alert('Error', 'Could not update pre-booking status.');
     }
   };
 
@@ -263,14 +246,7 @@ export default function FarmerSubscriptionScreen() {
           style={[styles.tabButton, activeTab === 'insights' && styles.tabButtonActive]}
           onPress={() => setActiveTab('insights')}>
           <Text style={[styles.tabButtonText, activeTab === 'insights' && styles.tabButtonTextActive]}>
-            📊 Market Intelligence
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'prebookings' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('prebookings')}>
-          <Text style={[styles.tabButtonText, activeTab === 'prebookings' && styles.tabButtonTextActive]}>
-            📅 Pre-Bookings ({prebookings.length})
+            🌾 Wholesale Benchmark & Analytics
           </Text>
         </TouchableOpacity>
       </View>
@@ -457,17 +433,17 @@ export default function FarmerSubscriptionScreen() {
         </View>
       )}
 
-      {/* TAB 2: MARKET INTELLIGENCE & INSIGHTS */}
+      {/* TAB 2: WHOLESALE BENCHMARK & REAL FARM ANALYTICS */}
       {activeTab === 'insights' && (
         <View>
-          {currentTier === 'biashara' ? (
+          {currentTier === 'plus' || currentTier === 'biashara' ? (
             <View style={styles.insightsUnlockedContainer}>
               <View style={styles.unlockedHeader}>
-                <Text style={styles.unlockedTitle}>📈 Live Farm Analytics & Demand Trends</Text>
-                <Text style={styles.unlockedSub}>Real-time metrics powered by Mavuno Market Intelligence</Text>
+                <Text style={styles.unlockedTitle}>🌾 Nairobi & Kiambu Wholesale Benchmark</Text>
+                <Text style={styles.unlockedSub}>Real-time commodity wholesale market prices & supply demand indicators</Text>
               </View>
 
-              {/* KPI Cards */}
+              {/* Real KPI Cards from Farmer's Real Data */}
               <View style={styles.kpiGrid}>
                 <View style={styles.kpiCard}>
                   <Text style={styles.kpiValue}>{insights?.active_listings ?? 0}</Text>
@@ -491,8 +467,8 @@ export default function FarmerSubscriptionScreen() {
 
               {/* Regional Commodity Price Trends */}
               <View style={styles.trendSection}>
-                <Text style={styles.trendSectionTitle}>🌾 Nairobi & Kiambu Wholesale Benchmark</Text>
-                <Text style={styles.trendSectionSub}>Updated today across major urban markets</Text>
+                <Text style={styles.trendSectionTitle}>📊 Live Commodity Wholesale Price Trends</Text>
+                <Text style={styles.trendSectionSub}>Benchmark your harvest prices against major urban wholesale terminals</Text>
                 {COMMODITY_TRENDS.map((c, i) => (
                   <View key={i} style={styles.trendRow}>
                     <View style={{ flex: 1 }}>
@@ -512,105 +488,9 @@ export default function FarmerSubscriptionScreen() {
           ) : (
             <View style={styles.lockedFeatureCard}>
               <Text style={styles.lockedIcon}>🔒</Text>
-              <Text style={styles.lockedTitle}>Market Intelligence is Exclusive to Mkulima Biashara</Text>
+              <Text style={styles.lockedTitle}>Wholesale Benchmarks Require Mkulima Plus or Biashara</Text>
               <Text style={styles.lockedDesc}>
                 Unlock real-time wholesale price benchmarks, commodity supply & demand forecasts, and gross sales analytics to maximize your farm profits.
-              </Text>
-              <TouchableOpacity
-                style={[styles.ctaButton, styles.ctaButtonBiashara, { marginTop: 16 }]}
-                onPress={() => {
-                  setSelectedPlanForUpgrade(FARMER_PLANS.biashara);
-                  setCheckoutModalVisible(true);
-                }}>
-                <Text style={styles.ctaButtonTextWhite}>👑 Upgrade to Mkulima Biashara (KES 1,499/mo)</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* TAB 3: HARVEST PRE-BOOKINGS */}
-      {activeTab === 'prebookings' && (
-        <View>
-          {currentTier === 'plus' || currentTier === 'biashara' ? (
-            <View style={styles.bookingsContainer}>
-              <View style={styles.bookingsHeader}>
-                <Text style={styles.unlockedTitle}>📅 Customer Harvest Pre-Bookings</Text>
-                <Text style={styles.unlockedSub}>
-                  Forward reservations from buyers before harvesting starts
-                </Text>
-              </View>
-
-              {prebookings.length === 0 ? (
-                <View style={styles.emptyBookingsCard}>
-                  <Text style={{ fontSize: 32, marginBottom: 8 }}>🌱</Text>
-                  <Text style={styles.emptyBookingsTitle}>No Pre-Bookings Yet</Text>
-                  <Text style={styles.emptyBookingsSub}>
-                    When adding new produce, enable "Allow Harvest Pre-Booking" so buyers can reserve early.
-                  </Text>
-                </View>
-              ) : (
-                prebookings.map((b) => (
-                  <View key={b.id} style={styles.bookingCard}>
-                    <View style={styles.bookingTopRow}>
-                      <View>
-                        <Text style={styles.bookingTitle}>
-                          Reservation #{b.id.substring(0, 8).toUpperCase()}
-                        </Text>
-                        <Text style={styles.bookingSub}>
-                          Quantity: <Text style={{ fontWeight: '700' }}>{b.quantity} {b.quantity_unit}</Text>
-                        </Text>
-                      </View>
-                      <View style={[styles.bookingBadge, b.status === 'accepted' ? styles.badgeGreen : b.status === 'fulfilled' ? styles.badgeGold : styles.badgeGray]}>
-                        <Text style={styles.bookingBadgeText}>{b.status.toUpperCase()}</Text>
-                      </View>
-                    </View>
-
-                    {b.notes && <Text style={styles.bookingNotes}>"{b.notes}"</Text>}
-
-                    <View style={styles.bookingDatesRow}>
-                      <Text style={styles.bookingDateLabel}>
-                        Target Window: {new Date(b.window_start).toLocaleDateString()} - {new Date(b.window_end).toLocaleDateString()}
-                      </Text>
-                      {b.target_price && (
-                        <Text style={styles.bookingPrice}>
-                          Offer: KES {b.target_price} / {b.quantity_unit}
-                        </Text>
-                      )}
-                    </View>
-
-                    {/* Action buttons */}
-                    {b.status === 'requested' && (
-                      <View style={styles.bookingActionsRow}>
-                        <TouchableOpacity
-                          style={[styles.bookingBtn, styles.bookingBtnAccept]}
-                          onPress={() => handleBookingAction(b, 'accepted')}>
-                          <Text style={styles.bookingBtnTextWhite}>✓ Accept Reservation</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.bookingBtn, styles.bookingBtnReject]}
-                          onPress={() => handleBookingAction(b, 'rejected')}>
-                          <Text style={styles.bookingBtnTextDark}>✕ Decline</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                    {b.status === 'accepted' && (
-                      <TouchableOpacity
-                        style={[styles.bookingBtn, styles.bookingBtnFulfill, { marginTop: 10 }]}
-                        onPress={() => handleBookingAction(b, 'fulfilled')}>
-                        <Text style={styles.bookingBtnTextWhite}>🚚 Mark Harvest Ready / Fulfilled</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ))
-              )}
-            </View>
-          ) : (
-            <View style={styles.lockedFeatureCard}>
-              <Text style={styles.lockedIcon}>🔒</Text>
-              <Text style={styles.lockedTitle}>Pre-Bookings Require Mkulima Plus or Biashara</Text>
-              <Text style={styles.lockedDesc}>
-                Secure customer and restaurant orders weeks before you harvest. Sell with confidence and eliminate post-harvest waste!
               </Text>
               <TouchableOpacity
                 style={[styles.ctaButton, styles.ctaButtonPlus, { marginTop: 16 }]}

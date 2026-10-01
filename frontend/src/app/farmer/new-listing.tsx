@@ -73,7 +73,6 @@ export default function NewListingScreen() {
   const [subscription, setSubscription] = useState<ActiveFarmerSubscription | null>(null);
   const [activeListingsCount, setActiveListingsCount] = useState(0);
   const [listingLimitReached, setListingLimitReached] = useState(false);
-  const [allowPrebooking, setAllowPrebooking] = useState(false);
 
   useEffect(() => {
     farmerSubscriptionService.getCurrentSubscription().then(setSubscription);
@@ -462,34 +461,6 @@ export default function NewListingScreen() {
                 </TouchableOpacity>
               );
             })}
-          </View>
-        </View>
-
-        {/* Harvest Pre-Booking Feature */}
-        <View style={styles.prebookingCard}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={styles.prebookingTitle}>🌱 Allow Buyer Harvest Pre-Booking</Text>
-              <Text style={styles.prebookingSub}>
-                {subscription?.tier === 'plus' || subscription?.tier === 'biashara'
-                  ? 'Buyers can reserve portions of this harvest before picking begins.'
-                  : '🔒 Pre-bookings require Mkulima Plus or Biashara.'}
-              </Text>
-            </View>
-            {subscription?.tier === 'plus' || subscription?.tier === 'biashara' ? (
-              <Switch
-                value={allowPrebooking}
-                onValueChange={setAllowPrebooking}
-                trackColor={{ false: '#CBD5E1', true: Colors.brandGreen }}
-              />
-            ) : (
-              <TouchableOpacity
-                style={styles.unlockSmallBtn}
-                onPress={() => router.push('/farmer/subscription' as Href)}
-                activeOpacity={0.85}>
-                <Text style={styles.unlockSmallBtnText}>Unlock ➔</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </View>
 

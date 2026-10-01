@@ -5,7 +5,6 @@ import {
   hasFeature,
   Insights,
   Plan as BackendPlan,
-  Prebooking,
   Subscription as BackendSubscription,
 } from './social-contracts.ts';
 import { farmerService } from './farmer-service.ts';
@@ -25,7 +24,6 @@ import {
 } from './farmer-subscription-contracts.ts';
 
 const STORAGE_KEY = '@mavuno_farmer_subscription_v2';
-const PREBOOKINGS_STORAGE_KEY = '@mavuno_farmer_simulated_prebookings_v1';
 
 
 
@@ -131,8 +129,7 @@ export const farmerSubscriptionService = {
         const match = farmerPlans.find(
           (p) =>
             p.billing_interval === interval &&
-            ((tier === 'biashara' && p.features.includes('insights')) ||
-             (tier === 'plus' && p.features.includes('prebooking') && !p.features.includes('insights')) ||
+            (p.features.includes('insights') ||
              p.name.toLowerCase().includes(tier))
         ) || farmerPlans[0];
 
@@ -190,7 +187,7 @@ export const farmerSubscriptionService = {
   /**
    * Check feature entitlement.
    */
-  async hasFeature(feature: 'prebooking' | 'insights'): Promise<boolean> {
+  async hasFeature(feature: 'insights' | string): Promise<boolean> {
     const sub = await this.getCurrentSubscription();
     const plan = FARMER_PLANS[sub.tier];
     return plan.features.includes(feature);
@@ -222,93 +219,9 @@ export const farmerSubscriptionService = {
 
     return {
       active_listings: activeListings,
-      units_available: unitsAvailable > 0 ? unitsAvailable.toFixed(1) : '150.0',
-      completed_order_lines: Math.max(stats.pendingOrdersCount * 2, 8),
-      gross_sales: stats.totalRevenue > 0 ? stats.totalRevenue.toFixed(2) : '32500.00',
+      units_available: unitsAvailable.toFixed(1),
+      completed_order_lines: stats.pendingOrdersCount,
+      gross_sales: (stats.totalRevenue || 0).toFixed(2),
     };
-  },
-
-  /**
-   * Get pre-bookings for the farmer.
-   */
-  async getPrebookings(): Promise<Prebooking[]> {
-    if (apiBaseUrl()) {
-      try {
-        return await socialApi.bookings();
-      } catch {
-        // Fall back to local
-      }
-    }
-
-    try {
-      const stored = await AsyncStorage.getItem(PREBOOKINGS_STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch {
-      // Ignore
-    }
-
-    // Default sample pre-bookings for demonstration
-    const sampleBookings: Prebooking[] = [
-      {
-        id: 'pb-001',
-        buyer_id: 'buyer-sarah',
-        farmer_id: 'current-farmer',
-        product_id: 'prod-avocados',
-        listing_id: 'list-avocados',
-        quantity: '80',
-        quantity_unit: 'kg',
-        target_price: '120.00',
-        currency: 'KES',
-        window_start: '2026-10-15T08:00:00+03:00',
-        window_end: '2026-10-20T18:00:00+03:00',
-        notes: 'Pre-booking Hass Avocados for restaurant opening in Kilimani.',
-        status: 'requested',
-        version: 1,
-      },
-      {
-        id: 'pb-002',
-        buyer_id: 'buyer-ken',
-        farmer_id: 'current-farmer',
-        product_id: 'prod-tomatoes',
-        listing_id: 'list-tomatoes',
-        quantity: '10',
-        quantity_unit: 'crate',
-        target_price: '1800.00',
-        currency: 'KES',
-        window_start: '2026-10-25T08:00:00+03:00',
-        window_end: '2026-10-30T18:00:00+03:00',
-        notes: 'Ripe salad tomatoes needed for catering weekend.',
-        status: 'accepted',
-        version: 2,
-      },
-    ];
-
-    await AsyncStorage.setItem(PREBOOKINGS_STORAGE_KEY, JSON.stringify(sampleBookings));
-    return sampleBookings;
-  },
-
-  /**
-   * Transition a pre-booking status (e.g. accepted, rejected, fulfilled).
-   */
-  async transitionPrebooking(
-    booking: Prebooking,
-    nextStatus: 'accepted' | 'rejected' | 'fulfilled' | 'cancelled'
-  ): Promise<Prebooking> {
-    if (apiBaseUrl()) {
-      try {
-        return await socialApi.transitionBooking(booking, nextStatus);
-      } catch {
-        // Fall back to local update
-      }
-    }
-
-    const current = await this.getPrebookings();
-    const updated = current.map((b) =>
-      b.id === booking.id ? { ...b, status: nextStatus, version: b.version + 1 } : b
-    );
-    await AsyncStorage.setItem(PREBOOKINGS_STORAGE_KEY, JSON.stringify(updated));
-    return updated.find((b) => b.id === booking.id)!;
   },
 };

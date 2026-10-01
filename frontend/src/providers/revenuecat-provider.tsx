@@ -19,6 +19,8 @@ import RevenueCatUI, {
   PAYWALL_RESULT,
 } from 'react-native-purchases-ui';
 
+import { Platform } from 'react-native';
+
 import { userService } from '@/services/user-service';
 
 export const MAVUNO_ENTITLEMENT = 'mavuno_premium';
@@ -88,13 +90,19 @@ export function RevenueCatProvider({
     useState<PurchasesOffering | null>(null);
 
   const refresh = useCallback(async () => {
+    if (Platform.OS === 'web') return customerInfo as any;
     const info = await Purchases.getCustomerInfo();
     setCustomerInfo(info);
     return info;
-  }, []);
+  }, [customerInfo]);
 
   useEffect(() => {
     let mounted = true;
+
+    if (Platform.OS === 'web') {
+      setReady(true);
+      return;
+    }
 
     const listener: CustomerInfoUpdateListener = (info) => {
       if (mounted) setCustomerInfo(info);
@@ -160,6 +168,7 @@ export function RevenueCatProvider({
   }, []);
 
   const identifyUser = useCallback(async (userId: string) => {
+    if (Platform.OS === 'web') return;
     setError(null);
 
     try {
@@ -176,6 +185,7 @@ export function RevenueCatProvider({
   }, []);
 
   const forgetUser = useCallback(async () => {
+    if (Platform.OS === 'web') return;
     setError(null);
 
     try {
@@ -191,6 +201,7 @@ export function RevenueCatProvider({
 
   const purchase = useCallback(
     async (purchasePackage: PurchasesPackage) => {
+      if (Platform.OS === 'web') return false;
       setBusy(true);
       setError(null);
 
@@ -213,6 +224,7 @@ export function RevenueCatProvider({
   );
 
   const restore = useCallback(async () => {
+    if (Platform.OS === 'web') return false;
     setBusy(true);
     setError(null);
 
@@ -229,6 +241,7 @@ export function RevenueCatProvider({
   }, []);
 
   const presentPaywall = useCallback(async () => {
+    if (Platform.OS === 'web') return PAYWALL_RESULT.NOT_PRESENTED;
     setError(null);
 
     try {
@@ -253,6 +266,7 @@ export function RevenueCatProvider({
   }, [refresh]);
 
   const presentCustomerCenter = useCallback(async () => {
+    if (Platform.OS === 'web') return;
     setError(null);
 
     try {

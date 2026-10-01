@@ -226,7 +226,7 @@ export default function FarmerDashboard() {
             </View>
             <Text style={styles.upgradePromoTitle}>Upgrade to Mkulima Plus or Biashara</Text>
             <Text style={styles.upgradePromoDesc}>
-              Unlock unlimited produce listings, Verified Farmer badge ✅ & buyer harvest pre-bookings.
+              Unlock unlimited produce listings, Verified Farmer badge ✅ & wholesale price benchmarks.
             </Text>
           </View>
           <View style={styles.upgradePromoArrowCircle}>
