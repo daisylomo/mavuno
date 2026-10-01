@@ -4,13 +4,12 @@ on:
   pull_request:
     paths:
       - .github/workflows/render-deploy.yml
+  # Only server code changes redeploy. CI-only edits are verified on their pull request, and
+  # workflow_dispatch redeploys by hand when needed.
   push:
     branches: [main]
     paths:
       - backend/**
-      - api_client/**
-      - .github/workflows/backend-ci.yml
-      - .github/workflows/render-deploy.yml
   workflow_dispatch:
 
 permissions:

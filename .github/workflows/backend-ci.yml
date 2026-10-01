@@ -1,16 +1,24 @@
 name: Backend CI
 
+# Runs once per change: directly on pull requests, and on main only through "Backend deployment",
+# which calls this workflow before deploying. Android releases call it for tagged builds only.
 on:
   pull_request:
     paths: ["backend/**", "api_client/**", ".github/workflows/backend-ci.yml"]
   push:
-    branches: [main, backend]
+    branches: [backend]
     paths: ["backend/**", "api_client/**", ".github/workflows/backend-ci.yml"]
   workflow_dispatch:
   workflow_call:
 
 permissions:
   contents: read
+
+# A new push to a pull request supersedes its previous run. Other runs (including calls from
+# other workflows) get a unique group so they are never cancelled.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('backend-ci-{0}-{1}', github.workflow, github.ref) || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   verify:
