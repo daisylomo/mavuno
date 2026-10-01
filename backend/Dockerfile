@@ -30,6 +30,10 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install --only-upgrade -y --no-install-recommends libpcre2-8-0 \
     && rm -rf /var/lib/apt/lists/* \
+    # The app runs from /opt/venv. The base image's pip, and the libraries it vendors such as
+    # urllib3, is never used at runtime and only adds packages to patch and scan.
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip \
+        /usr/local/lib/python3.13/site-packages/pip-*.dist-info /usr/local/bin/pip* \
     && addgroup --system --gid 10001 mavuno \
     && adduser --system --uid 10001 --ingroup mavuno --home /nonexistent --no-create-home mavuno
 
