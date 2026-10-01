@@ -63,6 +63,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      - uses: actions/checkout@v4
       - name: Require the RevenueCat key for releases
         run: |
           if [ -n "$EXPO_PUBLIC_REVENUECAT_API_KEY" ]; then
@@ -76,7 +77,6 @@ jobs:
           else
             echo "::warning::REVENUECAT_ANDROID_API_KEY is not set; this test APK cannot sell Premium."
           fi
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
