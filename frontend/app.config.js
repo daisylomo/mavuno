@@ -9,5 +9,10 @@ module.exports = ({ config }) => {
       throw new Error('Release APK requires a public HTTPS API URL ending in /api/v1.');
     }
   }
+  // RevenueCat Test Store keys only work in debuggable builds, so a Test Store build is made
+  // debuggable; a real store key (goog_) keeps the normal release build.
+  if (process.env.EXPO_PUBLIC_REVENUECAT_API_KEY?.startsWith('test_')) {
+    config.plugins = [...(config.plugins ?? []), './plugins/with-debuggable-release'];
+  }
   return config;
 };

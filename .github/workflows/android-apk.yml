@@ -70,11 +70,8 @@ jobs:
             case "$EXPO_PUBLIC_REVENUECAT_API_KEY" in
               sk_*) echo "::error::REVENUECAT_ANDROID_API_KEY is a secret key; use the public goog_ SDK key."; exit 1 ;;
               test_*)
-                # RevenueCat Test Store keys only work in debug builds; release APKs show "Wrong API key".
-                if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-                  echo "::error::REVENUECAT_ANDROID_API_KEY is a Test Store key; releases need the Google Play goog_ key."; exit 1
-                fi
-                echo "::warning::REVENUECAT_ANDROID_API_KEY is a Test Store key; this release-mode APK will report a wrong API key." ;;
+                # app.config.js then builds a debuggable APK, the only kind RevenueCat's Test Store runs in.
+                echo "::notice::RevenueCat Test Store key: building a debuggable APK; purchases are simulated, nothing is charged." ;;
             esac
             echo "RevenueCat SDK key is configured."
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -106,6 +103,11 @@ jobs:
           test -s "$APK"
           unzip -tqq "$APK"
           unzip -Z1 "$APK" | grep '^classes.dex$'
+          # The JavaScript must be bundled so the APK runs without a development server.
+          unzip -Z1 "$APK" | grep -q '^assets/index.android.bundle$'
+          if [[ "$EXPO_PUBLIC_REVENUECAT_API_KEY" == test_* ]]; then
+            "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | grep -q 'application-debuggable'               || { echo "::error::Test Store APK is not debuggable; RevenueCat would crash it on launch."; exit 1; }
+          fi
           mkdir -p dist-ci
           cp "$APK" "dist-ci/mavuno-test-${GITHUB_SHA:0:12}.apk"
           cd dist-ci && sha256sum *.apk > SHA256SUMS.txt
@@ -135,5 +137,5 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
             gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --prerelease
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --prerelease --title "Mavuno $GITHUB_REF_NAME (sandbox)" --notes "Android release candidate using sandbox M-Pesa and test signing. No real payments are collected. Backend and frontend checks passed before this APK was built. SHA256SUMS.txt verifies the download. Production requires production Daraja credentials, durable release signing, and live payment validation."
+            gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --prerelease --title "Mavuno $GITHUB_REF_NAME (sandbox)" --notes "Android release candidate using sandbox M-Pesa, RevenueCat Test Store for Premium, and test signing. No real payments are collected. Backend and frontend checks passed before this APK was built. SHA256SUMS.txt verifies the download. Production requires production Daraja credentials, durable release signing, and live payment validation."
           fi
