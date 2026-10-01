@@ -17,6 +17,10 @@ import { farmerService } from '../../services/farmer-service';
 import { AppUser, userService } from '../../services/user-service';
 import { FarmerStats, ListingStatus, ProduceListing } from '../../types/farmer';
 import MarketplaceLinks from '@/components/marketplace-links';
+import {
+  ActiveFarmerSubscription,
+  farmerSubscriptionService,
+} from '@/services/farmer-subscription-service';
 
 const PRODUCE_IMAGES: Record<string, any> = {
   tomatoes: require('@/assets/products/tomatoes.jpg'),
@@ -42,6 +46,7 @@ export default function FarmerDashboard() {
   const router = useRouter();
 
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [subscription, setSubscription] = useState<ActiveFarmerSubscription | null>(null);
   const [listings, setListings] = useState<ProduceListing[]>([]);
   const [stats, setStats] = useState<FarmerStats>({
     activeListingsCount: 0,
@@ -55,14 +60,16 @@ export default function FarmerDashboard() {
   const loadData = async () => {
     try {
       setError('');
-      const [allListings, currentStats, user] = await Promise.all([
+      const [allListings, currentStats, user, currentSub] = await Promise.all([
         farmerService.getListings(),
         farmerService.getStats(),
         userService.getCurrentUser(),
+        farmerSubscriptionService.getCurrentSubscription(),
       ]);
       setListings(allListings);
       setStats(currentStats);
       setCurrentUser(user);
+      setSubscription(currentSub);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load your listings.');
     } finally {
@@ -155,6 +162,24 @@ export default function FarmerDashboard() {
               Jambo, {getDisplayName()}! 👋
             </Text>
             <Text style={styles.farmSubtitle}>Manage your fresh harvest & buyer orders</Text>
+            <TouchableOpacity
+              onPress={() => router.push('/farmer/subscription' as Href)}
+              style={[
+                styles.tierChip,
+                subscription?.tier === 'biashara'
+                  ? styles.tierChipBiashara
+                  : subscription?.tier === 'plus'
+                  ? styles.tierChipPlus
+                  : styles.tierChipStarter,
+              ]}>
+              <Text style={styles.tierChipText}>
+                {subscription?.tier === 'biashara'
+                  ? '👑 Biashara Pro (3% Fee)'
+                  : subscription?.tier === 'plus'
+                  ? '⭐ Mkulima Plus (Verified ✅)'
+                  : '🌱 Free Starter Plan'} • Manage ➔
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -186,6 +211,52 @@ export default function FarmerDashboard() {
         </View>
       </View>
 
+      {/* Subscription Promo / Status Banner */}
+      {subscription?.tier === 'starter' || !subscription ? (
+        <TouchableOpacity
+          style={styles.upgradePromoBanner}
+          onPress={() => router.push('/farmer/subscription' as Href)}
+          activeOpacity={0.88}>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <View style={styles.upgradePromoTag}>
+                <Text style={styles.upgradePromoTagText}>BOOST HARVEST SALES</Text>
+              </View>
+              <Text style={styles.upgradePromoSub}>Save 20% Annual</Text>
+            </View>
+            <Text style={styles.upgradePromoTitle}>Upgrade to Mkulima Plus or Biashara</Text>
+            <Text style={styles.upgradePromoDesc}>
+              Unlock unlimited produce listings, Verified Farmer badge ✅ & buyer harvest pre-bookings.
+            </Text>
+          </View>
+          <View style={styles.upgradePromoArrowCircle}>
+            <Text style={styles.upgradePromoArrowText}>➔</Text>
+          </View>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={styles.proActiveBanner}
+          onPress={() => router.push('/farmer/subscription' as Href)}
+          activeOpacity={0.88}>
+          <Text style={{ fontSize: 24, marginRight: 10 }}>
+            {subscription.tier === 'biashara' ? '👑' : '⭐'}
+          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.proActiveTitle}>
+              {subscription.tier === 'biashara'
+                ? 'Mkulima Biashara Pro Active'
+                : 'Mkulima Plus Active'}
+            </Text>
+            <Text style={styles.proActiveDesc}>
+              {subscription.tier === 'biashara'
+                ? '3% lowest commission rate • Market intelligence & instant payouts'
+                : 'Unlimited listings enabled • Verified Farmer badge ✅ • 6% fee rate'}
+            </Text>
+          </View>
+          <Text style={styles.proActiveManageText}>Plans ➔</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Action Buttons Hub */}
       <View style={styles.actionGrid}>
         <TouchableOpacity
@@ -213,6 +284,19 @@ export default function FarmerDashboard() {
             </Text>
           </View>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.actionTierBtn]}
+          onPress={() => router.push('/farmer/subscription' as Href)}
+          activeOpacity={0.85}>
+          <Text style={styles.actionBtnIcon}>⭐</Text>
+          <View>
+            <Text style={styles.actionBtnTitle}>Farmer Subscriptions & Tiers</Text>
+            <Text style={styles.actionBtnSub}>
+              Active: {subscription?.tier === 'biashara' ? 'Biashara Pro (3% Fee)' : subscription?.tier === 'plus' ? 'Mkulima Plus (6% Fee)' : 'Free Starter (10% Fee)'}
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* Section Title */}
@@ -226,9 +310,17 @@ export default function FarmerDashboard() {
 
   const renderProduceCard = ({ item }: { item: ProduceListing }) => {
     const status = getStatusStyle(item.status);
+    const isProOrPlus = subscription && (subscription.tier === 'plus' || subscription.tier === 'biashara');
 
     return (
       <View style={styles.produceCard}>
+        {isProOrPlus && (
+          <View style={styles.verifiedProduceBadge}>
+            <Text style={styles.verifiedProduceBadgeText}>
+              {subscription?.tier === 'biashara' ? '👑 Biashara Verified • Priority Placement' : '✅ Verified Farmer Produce'}
+            </Text>
+          </View>
+        )}
         {/* Top Info */}
         <View style={styles.cardHeader}>
           {item.imageUrl ? (
@@ -649,5 +741,132 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginTop: 4,
+  },
+  tierChip: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  tierChipStarter: {
+    backgroundColor: '#F1F5F9',
+  },
+  tierChipPlus: {
+    backgroundColor: '#DCFCE7',
+  },
+  tierChipBiashara: {
+    backgroundColor: '#FEF3C7',
+  },
+  tierChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  upgradePromoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  upgradePromoTag: {
+    backgroundColor: Colors.brandGreen,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  upgradePromoTagText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  upgradePromoSub: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  upgradePromoTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  upgradePromoDesc: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 15,
+  },
+  upgradePromoArrowCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+  upgradePromoArrowText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.brandGreen,
+  },
+  proActiveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFCF7',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#FCD34D',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  proActiveTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  proActiveDesc: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  proActiveManageText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#D97706',
+    marginLeft: 8,
+  },
+  actionTierBtn: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  verifiedProduceBadge: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  verifiedProduceBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#15803D',
   },
 });

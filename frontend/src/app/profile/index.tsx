@@ -18,6 +18,10 @@ import { isBackendConfigured } from '../../services/auth-api';
 import { farmerService } from '../../services/farmer-service';
 import { FarmerPublicDetails } from '../../types/farmer';
 import { useRevenueCat } from '@/providers/revenuecat-provider';
+import {
+  ActiveFarmerSubscription,
+  farmerSubscriptionService,
+} from '@/services/farmer-subscription-service';
 
 export default function ProfileSettings() {
   const router = useRouter();
@@ -25,6 +29,7 @@ export default function ProfileSettings() {
 
 
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [farmerSub, setFarmerSub] = useState<ActiveFarmerSubscription | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -37,9 +42,13 @@ export default function ProfileSettings() {
   useEffect(() => {
     async function loadUser() {
       try {
-        const user = await userService.getCurrentUser();
+        const [user, sub] = await Promise.all([
+          userService.getCurrentUser(),
+          farmerSubscriptionService.getCurrentSubscription(),
+        ]);
         if (user) {
           setCurrentUser(user);
+          setFarmerSub(sub);
           setName(user.name || '');
           setEmail(user.email || '');
           setPhone(user.phone || '');
@@ -181,6 +190,48 @@ export default function ProfileSettings() {
           <Text style={styles.saveButtonText}>Save Changes</Text>
         </TouchableOpacity>
       </View>
+
+      {currentUser?.role === 'farmer' && (
+        <View style={styles.formCard}>
+          <Text style={styles.cardSectionTitle}>Farmer Membership & Subscriptions</Text>
+          <View style={styles.subTierHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.subTierName}>
+                {farmerSub?.tier === 'biashara'
+                  ? '👑 Mkulima Biashara'
+                  : farmerSub?.tier === 'plus'
+                  ? '⭐ Mkulima Plus'
+                  : '🌱 Mkulima Starter (Free)'}
+              </Text>
+              <Text style={styles.subTierDetail}>
+                {farmerSub?.tier === 'biashara'
+                  ? '3% Platform Fee • Market Intelligence • Instant M-Pesa'
+                  : farmerSub?.tier === 'plus'
+                  ? '6% Platform Fee • Unlimited Listings • Pre-Bookings'
+                  : '10% Platform Fee • Up to 3 Active Listings'}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.subPill,
+                farmerSub?.tier === 'biashara'
+                  ? styles.subPillGold
+                  : farmerSub?.tier === 'plus'
+                  ? styles.subPillGreen
+                  : styles.subPillGray,
+              ]}>
+              <Text style={styles.subPillText}>
+                {farmerSub?.tier === 'biashara' ? 'PRO' : farmerSub?.tier === 'plus' ? 'PLUS' : 'FREE'}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.manageSubButton}
+            onPress={() => router.push('/farmer/subscription' as Href)}>
+            <Text style={styles.manageSubButtonText}>⭐ Manage Subscription & Tiers</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {farm && (
         <View style={styles.formCard}>
@@ -384,6 +435,59 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     color: '#DC2626',
     fontSize: 15,
+    fontWeight: '700',
+  },
+  subTierHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  subTierName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  subTierDetail: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 3,
+  },
+  subPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  subPillGold: {
+    backgroundColor: '#FEF3C7',
+  },
+  subPillGreen: {
+    backgroundColor: '#DCFCE7',
+  },
+  subPillGray: {
+    backgroundColor: '#F1F5F9',
+  },
+  subPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  manageSubButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: Colors.brandGreen,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  manageSubButtonText: {
+    color: Colors.brandGreen,
+    fontSize: 14,
     fontWeight: '700',
   },
 });

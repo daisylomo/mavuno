@@ -40,28 +40,51 @@ export default function FarmerLayout() {
             </Pressable>
           ),
           headerRight: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginRight: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 4 }}>
+              <Pressable
+                onPress={() => router.push('/farmer/subscription' as Href)}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.25)',
+                  paddingHorizontal: 9,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                }}>
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>⭐ Plans</Text>
+              </Pressable>
               <Pressable
                 onPress={() => router.push('/profile' as Href)}
                 style={{
                   backgroundColor: 'rgba(255,255,255,0.22)',
-                  paddingHorizontal: 10,
+                  paddingHorizontal: 9,
                   paddingVertical: 6,
                   borderRadius: 8,
                 }}>
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>👤 Profile</Text>
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>👤 Profile</Text>
               </Pressable>
               <Pressable
                 onPress={handleLogout}
                 style={{
                   backgroundColor: 'rgba(255,255,255,0.22)',
-                  paddingHorizontal: 10,
+                  paddingHorizontal: 9,
                   paddingVertical: 6,
                   borderRadius: 8,
                 }}>
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>🚪 Log Out</Text>
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>🚪 Log Out</Text>
               </Pressable>
             </View>
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="subscription"
+        options={{
+          title: 'Farmer Subscriptions & Plans',
+          headerLeft: () => (
+            <Pressable
+              onPress={navigateBack}
+              style={{ marginRight: 16, padding: 4 }}>
+              <Text style={{ color: '#fff', fontSize: 22, fontWeight: 'bold' }}>←</Text>
+            </Pressable>
           ),
         }}
       />

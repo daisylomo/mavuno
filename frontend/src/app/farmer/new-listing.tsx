@@ -7,12 +7,13 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Colors } from '@/constants/theme';
@@ -22,6 +23,10 @@ import {
   MAX_PHOTO_BYTES,
   type PhotoUpload,
 } from '@/services/farmer-service';
+import {
+  ActiveFarmerSubscription,
+  farmerSubscriptionService,
+} from '@/services/farmer-subscription-service';
 import { base64Bytes, HARVEST_OPTIONS } from '@/components/listing-details';
 import { ProduceCategory, ProduceUnit } from '@/types/farmer';
 import { apiBaseUrl } from '@/components/customer-catalog-api';
@@ -65,8 +70,21 @@ export default function NewListingScreen() {
   const [productId, setProductId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [subscription, setSubscription] = useState<ActiveFarmerSubscription | null>(null);
+  const [activeListingsCount, setActiveListingsCount] = useState(0);
+  const [listingLimitReached, setListingLimitReached] = useState(false);
+  const [allowPrebooking, setAllowPrebooking] = useState(false);
 
   useEffect(() => {
+    farmerSubscriptionService.getCurrentSubscription().then(setSubscription);
+    farmerService.getListings().then((all) => {
+      const activeCount = all.filter((l) => l.status === 'active' || l.status === 'low_stock').length;
+      setActiveListingsCount(activeCount);
+      farmerSubscriptionService.canCreateListing(activeCount).then((res) => {
+        setListingLimitReached(!res.allowed);
+      });
+    });
+
     const base = apiBaseUrl();
     if (!base) return;
     fetch(`${base}/catalog/products`).then(async (response) => {
@@ -159,6 +177,24 @@ export default function NewListingScreen() {
       return;
     }
 
+    // Check subscription tier listing quota
+    const canCreate = await farmerSubscriptionService.canCreateListing(activeListingsCount);
+    if (!canCreate.allowed) {
+      setError(canCreate.reason || 'Listing limit reached.');
+      Alert.alert(
+        'Listing Limit Reached',
+        'You have reached the 3-listing cap on the Free Starter plan. Upgrade to Mkulima Plus to list unlimited fresh produce!',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: '⭐ Upgrade to Plus',
+            onPress: () => router.push('/farmer/subscription' as Href),
+          },
+        ]
+      );
+      return;
+    }
+
     setError('');
     setSaving(true);
 
@@ -207,6 +243,27 @@ export default function NewListingScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Tier Limit Warning */}
+        {listingLimitReached && (
+          <View style={styles.limitWarningCard}>
+            <Text style={{ fontSize: 24, marginRight: 10 }}>⚠️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.limitWarningTitle}>
+                Starter Plan Listing Limit Reached ({activeListingsCount}/3)
+              </Text>
+              <Text style={styles.limitWarningDesc}>
+                The Free Starter tier allows up to 3 active listings. Upgrade to Mkulima Plus to list unlimited produce harvests!
+              </Text>
+              <TouchableOpacity
+                style={styles.upgradeBtnSmall}
+                onPress={() => router.push('/farmer/subscription' as Href)}
+                activeOpacity={0.85}>
+                <Text style={styles.upgradeBtnSmallText}>⭐ Upgrade to Unlimited (KES 499/mo)</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {error ? (
           <View style={styles.errorBox}>
@@ -405,6 +462,34 @@ export default function NewListingScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        </View>
+
+        {/* Harvest Pre-Booking Feature */}
+        <View style={styles.prebookingCard}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={styles.prebookingTitle}>🌱 Allow Buyer Harvest Pre-Booking</Text>
+              <Text style={styles.prebookingSub}>
+                {subscription?.tier === 'plus' || subscription?.tier === 'biashara'
+                  ? 'Buyers can reserve portions of this harvest before picking begins.'
+                  : '🔒 Pre-bookings require Mkulima Plus or Biashara.'}
+              </Text>
+            </View>
+            {subscription?.tier === 'plus' || subscription?.tier === 'biashara' ? (
+              <Switch
+                value={allowPrebooking}
+                onValueChange={setAllowPrebooking}
+                trackColor={{ false: '#CBD5E1', true: Colors.brandGreen }}
+              />
+            ) : (
+              <TouchableOpacity
+                style={styles.unlockSmallBtn}
+                onPress={() => router.push('/farmer/subscription' as Href)}
+                activeOpacity={0.85}>
+                <Text style={styles.unlockSmallBtnText}>Unlock ➔</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -714,5 +799,69 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.text,
     fontWeight: '500',
+  },
+  limitWarningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+  },
+  limitWarningTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#92400E',
+    marginBottom: 2,
+  },
+  limitWarningDesc: {
+    fontSize: 11,
+    color: '#78350F',
+    lineHeight: 15,
+  },
+  upgradeBtnSmall: {
+    backgroundColor: '#D97706',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  upgradeBtnSmallText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  prebookingCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  prebookingTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 2,
+  },
+  prebookingSub: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 15,
+  },
+  unlockSmallBtn: {
+    backgroundColor: Colors.brandGreen,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  unlockSmallBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

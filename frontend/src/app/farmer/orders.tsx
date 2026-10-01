@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -14,10 +14,16 @@ import { farmerService } from '@/services/farmer-service';
 import { FarmerOrder, OrderStatus } from '@/types/farmer';
 import { isBackendConfigured } from '@/services/auth-api';
 import { reservationDeadline } from '@/components/listing-details';
+import {
+  ActiveFarmerSubscription,
+  calculateTierCommission,
+  farmerSubscriptionService,
+} from '@/services/farmer-subscription-service';
 
 export default function FarmerOrdersScreen() {
   const router = useRouter();
   const [orders, setOrders] = useState<FarmerOrder[]>([]);
+  const [subscription, setSubscription] = useState<ActiveFarmerSubscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'pending' | 'accepted' | 'completed'>('all');
@@ -25,8 +31,12 @@ export default function FarmerOrdersScreen() {
   const loadOrders = async () => {
     setLoading(true);
     try {
-      const data = await farmerService.getOrders();
+      const [data, sub] = await Promise.all([
+        farmerService.getOrders(),
+        farmerSubscriptionService.getCurrentSubscription(),
+      ]);
       setOrders(data);
+      setSubscription(sub);
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load orders.');
@@ -162,10 +172,39 @@ export default function FarmerOrdersScreen() {
             <Text style={styles.paymentMethod}>Payment: {item.paymentMethod}</Text>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.totalLabel}>{isBackendConfigured() ? 'Your items subtotal' : 'Total Payout'}</Text>
+            <Text style={styles.totalLabel}>{isBackendConfigured() ? 'Your items subtotal' : 'Order Gross Total'}</Text>
             <Text style={styles.totalAmount}>KSh {item.totalAmount.toLocaleString()}</Text>
           </View>
         </View>
+
+        {/* Tier Platform Commission & Net Settlement */}
+        {(() => {
+          const tier = subscription?.tier || 'starter';
+          const comm = calculateTierCommission(tier, item.totalAmount);
+          return (
+            <View style={styles.commissionBox}>
+              <View style={styles.commissionRow}>
+                <Text style={styles.commissionLabel}>
+                  Platform Fee ({tier === 'biashara' ? '3% Pro Rate 🏆' : tier === 'plus' ? '6% Plus Rate ⭐' : '10% Starter'}):
+                </Text>
+                <Text style={styles.commissionVal}>-KSh {comm.feeAmount.toLocaleString()}</Text>
+              </View>
+              {comm.savingsVsStarter > 0 && (
+                <View style={styles.commissionRow}>
+                  <Text style={styles.savingsLabel}>🎉 Plan Fee Savings:</Text>
+                  <Text style={styles.savingsVal}>+KSh {comm.savingsVsStarter.toLocaleString()}</Text>
+                </View>
+              )}
+              <View style={[styles.commissionRow, styles.netRow]}>
+                <Text style={styles.netPayoutLabel}>Net Farmer Settlement:</Text>
+                <Text style={styles.netPayoutVal}>KSh {comm.netPayout.toLocaleString()}</Text>
+              </View>
+              {tier === 'biashara' && (
+                <Text style={styles.instantPayoutNote}>⚡ Instant M-Pesa mobile payout on handover</Text>
+              )}
+            </View>
+          );
+        })()}
 
         {/* Actions */}
         {!isBackendConfigured() && <View style={styles.actionRow}>
@@ -481,5 +520,60 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 14,
+  },
+  commissionBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  commissionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 3,
+  },
+  commissionLabel: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  commissionVal: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  savingsLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  savingsVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  netRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 5,
+    marginTop: 4,
+  },
+  netPayoutLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  netPayoutVal: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: Colors.brandGreen,
+  },
+  instantPayoutNote: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#D97706',
+    marginTop: 4,
   },
 });
