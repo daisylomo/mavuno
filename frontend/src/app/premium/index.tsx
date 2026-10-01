@@ -4,8 +4,9 @@ import { Text, View } from 'react-native';
 import { Button, dateText, errorText, Feedback, Screen, ui, useLiveData, useMarketplaceUser } from '@/components/marketplace-screen';
 import { useRevenueCat } from '@/providers/revenuecat-provider';
 import { socialApi } from '@/services/social-api';
+import { refreshPremiumEntitlements } from '@/services/premium-refresh';
 
-const loadEntitlements = () => socialApi.entitlements();
+const loadEntitlements = () => refreshPremiumEntitlements(socialApi);
 
 /** The Premium area. Only accounts the backend confirms as Premium see it; others go to the upgrade screen. */
 export default function PremiumHome() {

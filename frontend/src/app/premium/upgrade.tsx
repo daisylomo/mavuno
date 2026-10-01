@@ -4,9 +4,10 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { Button, errorText, Feedback, Screen, ui, useLiveData, useMarketplaceUser } from '@/components/marketplace-screen';
 import { useRevenueCat } from '@/providers/revenuecat-provider';
 import { socialApi } from '@/services/social-api';
+import { refreshPremiumEntitlements } from '@/services/premium-refresh';
 import { Entitlements } from '@/services/social-contracts';
 
-const loadEntitlements = () => socialApi.entitlements();
+const loadEntitlements = () => refreshPremiumEntitlements(socialApi);
 const benefits = {
   customer: ['Request future harvests directly from farmers', 'Agree quantities, dates and a proposed price before the harvest'],
   farmer: ['Farm sales insights: active listings, stock and completed orders', 'Gross sales from completed orders at a glance'],
