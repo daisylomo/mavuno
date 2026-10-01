@@ -1,27 +1,75 @@
-# Welcome to your Expo app 👋
+# Mavuno 🌾
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+<img src="frontend/assets/images/mavuno-icon.png" alt="Mavuno wheat icon" width="160" />
 
-## Get started
+Mavuno connects Kenyan farmers directly with buyers. Farmers list produce and
+receive orders; buyers discover local harvests, place orders and coordinate with
+farmers. RevenueCat powers optional Premium access for future harvest requests
+and farmer insights.
 
-1. Install dependencies
+## Try the Android app
 
-   ```bash
-   npm install
-   ```
+Download the APK and `SHA256SUMS.txt` from the
+[v1.0.0-rc.8 sandbox release](https://github.com/daisylomo/mavuno/releases/tag/v1.0.0-rc.8).
+The release appears after the tagged CI build finishes. This build includes the
+wheat launcher/splash icon and Premium renewal verification.
 
-2. Start the app
+This is a test release with test signing, RevenueCat Test Store and sandbox
+M-Pesa. No real payments are collected. It is not a Google Play listing.
 
-   ```bash
-   npx expo start
-   ```
+## Premium walkthrough
 
-In the output, you'll find options to open the app in a
+1. Create a buyer account and open **Premium → See Premium plans**.
+2. Select a plan and complete a valid RevenueCat Test Store purchase.
+3. Confirm Premium access; use **Manage subscription** for Customer Center and
+   purchase restoration.
+4. Create an active produce listing with a separate farmer account. As the
+   Premium buyer, open the listing and request a future harvest with a quantity,
+   future date window and proposed price.
+5. As the farmer, open **Premium → Harvest requests** and accept or decline.
+   Return as the buyer to see the response. Farmers can respond for free.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Harvest requests do not collect payment or reserve current stock. RevenueCat
+sells digital Premium access; produce checkout is a separate M-Pesa flow.
+
+The SDK uses the signed-in Mavuno account ID. Purchases and restores are verified
+by the backend against the `mavuno_premium` entitlement. Webhooks synchronize
+subscription changes, and Premium screens reverify inactive access before
+showing an upgrade. Test Store subscription periods are accelerated.
+
+Purchase unlock, restore and the buyer/farmer request flow were verified in the
+rc.7 APK. Successful real-money produce payment and fulfilment are not claimed.
+
+## Development
+
+- `frontend/`: Expo SDK 57, React Native and TypeScript.
+- `backend/`: FastAPI, MySQL and Redis-compatible services; see
+  [backend setup](backend/README.md).
+- `api_client/`: Python API client.
+
+Use Node.js 22.13 or later in the Node 22 series, or a supported newer Node version.
+
+```bash
+cd frontend
+npm ci
+npm run android
+```
+
+RevenueCat purchases require a native development build or the released APK;
+Expo Go and the web preview do not validate the native purchase flow.
+Set `EXPO_PUBLIC_MAVUNO_API_URL` and the public
+`EXPO_PUBLIC_REVENUECAT_API_KEY` before building. Never put a RevenueCat secret
+key in a client environment variable. CI reads the public SDK key from the
+`REVENUECAT_ANDROID_API_KEY` repository secret. A `test_` key enables the
+Test Store-compatible debuggable build; a `goog_` key selects Google Play.
+
+```bash
+npx tsc --noEmit
+node --experimental-strip-types --test tests/*.test.mjs
+```
+
+The launcher, splash screen, iOS icon and web favicon use the supplied wheat
+asset in `frontend/assets/images/mavuno-icon.png` (1024 × 1024 PNG).
 
 ### Customer marketplace
 
@@ -159,35 +207,3 @@ these backend rules apply:
 
 There is no `admin` option when registering, because the backend only accepts
 `buyer` and `farmer`.
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
