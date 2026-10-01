@@ -57,10 +57,25 @@ jobs:
       MAVUNO_RELEASE_BUILD: '1'
       EXPO_PUBLIC_MAVUNO_API_URL: https://mavuno-api.onrender.com/api/v1
       EXPO_PUBLIC_MAVUNO_PAYMENTS_SANDBOX: '1'
+      # RevenueCat's public Android SDK key (goog_...), never the secret sk_ key: it ships in the APK.
+      EXPO_PUBLIC_REVENUECAT_API_KEY: ${{ secrets.REVENUECAT_ANDROID_API_KEY }}
     defaults:
       run:
         working-directory: frontend
     steps:
+      - name: Require the RevenueCat key for releases
+        run: |
+          if [ -n "$EXPO_PUBLIC_REVENUECAT_API_KEY" ]; then
+            case "$EXPO_PUBLIC_REVENUECAT_API_KEY" in
+              sk_*) echo "::error::REVENUECAT_ANDROID_API_KEY is a secret key; use the public goog_ SDK key."; exit 1 ;;
+            esac
+            echo "RevenueCat SDK key is configured."
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::REVENUECAT_ANDROID_API_KEY is not set; a release without it cannot sell Premium."
+            exit 1
+          else
+            echo "::warning::REVENUECAT_ANDROID_API_KEY is not set; this test APK cannot sell Premium."
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
