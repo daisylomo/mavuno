@@ -44,3 +44,9 @@ services:
         sync: false
       - key: MAVUNO_DARAJA_SECURITY_CREDENTIAL
         sync: false
+      # Premium bought in the app through RevenueCat (secret sk_ key, and the webhook
+      # Authorization value set on RevenueCat's webhook for /api/v1/webhooks/revenuecat).
+      - key: MAVUNO_REVENUECAT_SECRET_API_KEY
+        sync: false
+      - key: MAVUNO_REVENUECAT_WEBHOOK_AUTHORIZATION
+        sync: false

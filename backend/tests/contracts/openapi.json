@@ -820,6 +820,58 @@
         "title": "ConversationSummary",
         "type": "object"
       },
+      "EntitlementsResponse": {
+        "description": "What the signed-in user may use right now, decided by the backend alone.",
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "features": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "premium": {
+            "title": "Premium",
+            "type": "boolean"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "purchases_available": {
+            "title": "Purchases Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "premium",
+          "features",
+          "provider",
+          "expires_at",
+          "purchases_available"
+        ],
+        "title": "EntitlementsResponse",
+        "type": "object"
+      },
       "FarmerInsightsResponse": {
         "properties": {
           "active_listings": {
@@ -6630,6 +6682,33 @@
         ]
       }
     },
+    "/api/v1/premium/entitlements": {
+      "get": {
+        "description": "The single answer to \"is this user Premium?\" that the app gates screens on.",
+        "operationId": "current_entitlements_api_v1_premium_entitlements_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitlementsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Current Entitlements",
+        "tags": [
+          "premium"
+        ]
+      }
+    },
     "/api/v1/premium/insights/farmer": {
       "get": {
         "operationId": "farmer_insights_api_v1_premium_insights_farmer_get",
@@ -6720,6 +6799,33 @@
           }
         ],
         "summary": "Create Plan",
+        "tags": [
+          "premium"
+        ]
+      }
+    },
+    "/api/v1/premium/store/sync": {
+      "post": {
+        "description": "Re-check the user's RevenueCat purchases, e.g. right after buying or restoring.",
+        "operationId": "sync_store_purchases_api_v1_premium_store_sync_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitlementsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sync Store Purchases",
         "tags": [
           "premium"
         ]
@@ -7462,6 +7568,52 @@
           }
         },
         "summary": "Premium Callback",
+        "tags": [
+          "premium"
+        ]
+      }
+    },
+    "/api/v1/webhooks/revenuecat": {
+      "post": {
+        "operationId": "revenuecat_webhook_api_v1_webhooks_revenuecat_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Revenuecat Webhook Api V1 Webhooks Revenuecat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revenuecat Webhook",
         "tags": [
           "premium"
         ]

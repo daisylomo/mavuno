@@ -23,8 +23,15 @@ from mavuno.db.models import (
     UserRole,
 )
 from mavuno.premium.repository import PremiumRepository
+from mavuno.premium.revenuecat import REVENUECAT_PROVIDER, STORE_PLAN_CODES, StoreEntitlement
 from mavuno.premium.schemas import PrebookingCreate, PrebookingTransition
-from mavuno.premium.service import InsightsService, PrebookingService, _now
+from mavuno.premium.service import (
+    EntitlementService,
+    InsightsService,
+    PrebookingService,
+    StoreSubscriptionService,
+    _now,
+)
 
 TEST_DATABASE_URL = os.getenv("MAVUNO_TEST_DATABASE_URL")
 pytestmark = [
@@ -185,5 +192,77 @@ async def test_verified_entitlements_drive_prebooking_and_insights() -> None:
             await session.execute(delete(Product).where(Product.id == product_id))
             await session.execute(delete(ProduceCategory).where(ProduceCategory.id == category_id))
             await session.execute(delete(User).where(User.id.in_((buyer_id, farmer_id))))
+            await session.commit()
+        await database.dispose()
+
+
+class _Store:
+    def __init__(self, value: StoreEntitlement | None) -> None:
+        self.value = value
+
+    async def entitlement(self, app_user_id: str) -> StoreEntitlement | None:
+        return self.value
+
+
+@pytest.mark.anyio
+async def test_store_purchase_unlocks_and_lapse_revokes_premium() -> None:
+    """A RevenueCat purchase becomes Premium only through the seeded store plan, and lapses."""
+    assert TEST_DATABASE_URL is not None
+    settings = Settings(
+        environment="test",
+        database_url=SecretStr(TEST_DATABASE_URL),
+        revenuecat_secret_api_key=SecretStr("sk_test"),
+    )
+    database = Database(settings)
+    farmer_id = uuid4()
+    now = _now()
+    try:
+        async with database.session() as session:
+            session.add(
+                User(
+                    id=farmer_id,
+                    email=f"{farmer_id}@example.test",
+                    password_hash="x",
+                    status="active",
+                )
+            )
+            await session.flush()
+            session.add(UserRole(user_id=farmer_id, role_name="farmer"))
+            await session.commit()
+
+        async with database.session() as session:
+            repository = PremiumRepository(session)
+            assert await repository.user_exists(farmer_id)
+            assert not await repository.user_exists(uuid4())
+            assert all(
+                plan.code not in STORE_PLAN_CODES.values() for plan in await repository.plans()
+            )
+            assert not (await EntitlementService(repository, settings).current(farmer_id)).premium
+            purchase = StoreEntitlement("mavuno_monthly", now, now + timedelta(days=30))
+            await StoreSubscriptionService(repository, settings, _Store(purchase)).sync(farmer_id)
+
+        async with database.session() as session:
+            repository = PremiumRepository(session)
+            current = await EntitlementService(repository, settings).current(farmer_id)
+            assert current.premium and current.provider == REVENUECAT_PROVIDER
+            assert "insights" in current.features
+            farmer = AuthenticatedUser(
+                farmer_id, "farmer@example.test", None, frozenset({"farmer"}), 0
+            )
+            assert (await InsightsService(repository).farmer(farmer)).active_listings == 0
+            # A renewal updates the same record instead of creating another.
+            await StoreSubscriptionService(repository, settings, _Store(purchase)).sync(farmer_id)
+            subscription = await repository.provider_subscription(farmer_id, REVENUECAT_PROVIDER)
+            assert subscription is not None and subscription.status == "active"
+
+        async with database.session() as session:
+            repository = PremiumRepository(session)
+            await StoreSubscriptionService(repository, settings, _Store(None)).sync(farmer_id)
+            assert not (await EntitlementService(repository, settings).current(farmer_id)).premium
+    finally:
+        async with database.session() as session:
+            await session.execute(delete(Subscription).where(Subscription.user_id == farmer_id))
+            await session.execute(delete(UserRole).where(UserRole.user_id == farmer_id))
+            await session.execute(delete(User).where(User.id == farmer_id))
             await session.commit()
         await database.dispose()

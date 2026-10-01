@@ -10,6 +10,7 @@ from mavuno.api.dependencies import CurrentUser, DatabaseSession, require_roles
 from mavuno.auth.context import AuthenticatedUser
 from mavuno.premium.repository import PremiumRepository
 from mavuno.premium.schemas import (
+    EntitlementsResponse,
     FarmerInsightsResponse,
     PlanCreate,
     PlanResponse,
@@ -19,7 +20,13 @@ from mavuno.premium.schemas import (
     SubscriptionCreate,
     SubscriptionResponse,
 )
-from mavuno.premium.service import InsightsService, PrebookingService, SubscriptionService
+from mavuno.premium.service import (
+    EntitlementService,
+    InsightsService,
+    PrebookingService,
+    StoreSubscriptionService,
+    SubscriptionService,
+)
 
 router = APIRouter(tags=["premium"])
 AdminUser = Annotated[AuthenticatedUser, Depends(require_roles("administrator"))]
@@ -86,6 +93,45 @@ async def premium_callback(
         payload = {}
     await SubscriptionService(PremiumRepository(session), request.app.state.settings).callback(
         callback_token, raw, payload, signature
+    )
+    return {"accepted": True}
+
+
+@router.get("/premium/entitlements", response_model=EntitlementsResponse)
+async def current_entitlements(
+    current_user: CurrentUser, session: DatabaseSession, request: Request
+) -> object:
+    """The single answer to "is this user Premium?" that the app gates screens on."""
+    return await EntitlementService(PremiumRepository(session), request.app.state.settings).current(
+        current_user.id
+    )
+
+
+@router.post("/premium/store/sync", response_model=EntitlementsResponse)
+async def sync_store_purchases(
+    current_user: CurrentUser, session: DatabaseSession, request: Request
+) -> object:
+    """Re-check the user's RevenueCat purchases, e.g. right after buying or restoring."""
+    repository = PremiumRepository(session)
+    settings = request.app.state.settings
+    await StoreSubscriptionService(repository, settings).sync(current_user.id)
+    return await EntitlementService(repository, settings).current(current_user.id)
+
+
+@router.post("/webhooks/revenuecat", status_code=200)
+async def revenuecat_webhook(
+    request: Request,
+    session: DatabaseSession,
+    authorization: Annotated[str, Header()],
+) -> dict[str, bool]:
+    try:
+        payload = json.loads(await request.body())
+    except (ValueError, UnicodeDecodeError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    await StoreSubscriptionService(PremiumRepository(session), request.app.state.settings).webhook(
+        authorization, payload
     )
     return {"accepted": True}
 
