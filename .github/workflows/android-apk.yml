@@ -36,7 +36,7 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -80,7 +80,7 @@ jobs:
           else
             echo "::warning::REVENUECAT_ANDROID_API_KEY is not set; this test APK cannot sell Premium."
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
