@@ -111,7 +111,7 @@ jobs:
           mkdir -p dist-ci
           cp "$APK" "dist-ci/mavuno-test-${GITHUB_SHA:0:12}.apk"
           cd dist-ci && sha256sum *.apk > SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mavuno-android-apk-${{ github.sha }}
           path: frontend/dist-ci/*
